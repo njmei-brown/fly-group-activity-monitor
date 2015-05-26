@@ -16,9 +16,8 @@ boolean run_blink = 0;
 float interval = (1000/desired_frequency)-desired_on_time;           // interval at which to blink (milliseconds)
 
 void setup() {  
-  pinMode(led_pin, OUTPUT);
   Serial.begin(9600);
-  // set the digital pin as output:      
+  pinMode(led_pin, OUTPUT); // set the digital pin as output:      
 }
 
 void loop()
@@ -32,44 +31,38 @@ void loop()
     desired_frequency = des_freq.toFloat();
     //update the interval
     if (desired_frequency == 0 || desired_on_time == 0) {
-      run_blink = 0;    
-      digitalWrite(led_pin, LOW); 
+      run_blink = 0;  
+      led_state = LOW;
+      digitalWrite(led_pin, led_state);    
     }
     else {
       interval = (1000/desired_frequency)-desired_on_time; 
       run_blink = 1;
-      digitalWrite(led_pin, LOW);
     }
   }
+  
+  //LED Blink Loop
   unsigned long current_millis = millis();
   // Check if we're in LED blink mode or not
   if (run_blink == 1) {
-    millis_diff = current_millis - previous_millis;
-    // Check if we're in LED OFF state
+    millis_diff = current_millis - previous_millis;  
     if(led_state == LOW){
       // Check if we have exceeded our off time interval
       if(millis_diff > interval) {
-        // Save when you turn on the LED 
+        // Save time when you turn on the LED 
         previous_millis = current_millis;   
         led_state = HIGH;
         digitalWrite(led_pin, led_state);
         }   
     }
-    // If not, we're in LED ON state
+    // If led_state is not LOW
     else{
       if (millis_diff > desired_on_time){
-        // Save when you turn off the LED
+        // Save time when you turn off the LED
         previous_millis = current_millis;
         led_state = LOW;
         digitalWrite(led_pin, led_state); 
       }
-    }      
-  }
-  // If we're not in LED blink mode we set the state to HIGH
-  else {
-    if (led_state == HIGH) {
-      led_state = LOW;
-      digitalWrite(led_pin, led_state);
-    }
+    }     
   }
 }
