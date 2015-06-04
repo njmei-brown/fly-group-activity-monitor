@@ -124,7 +124,7 @@ def calibrate_camera():
             "camera_matrix": mtx.tolist(),
             "dist_coeff": dist.tolist()}
             
-    fname = "Camera_ELP_calibration_matrices.json"
+    fname = "Camera_ELP_v2_calibration_matrices.json"
     
     #defaults to saving to desktop
     
@@ -155,7 +155,7 @@ def read_cam_calibration_file(filepath):
 def test_calibration():
     cam = cv2.VideoCapture(cv2.CAP_DSHOW + 0)
     
-    data = read_cam_calibration_file("Camera_ELP_calibration_matrices.json")    
+    data = read_cam_calibration_file("Camera_ELP_v2_calibration_matrices.json")    
     mtx = data["camera_matrix"]
     dist = data["dist_coeff"]
     

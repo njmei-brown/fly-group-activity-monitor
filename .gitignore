@@ -20,6 +20,12 @@ $RECYCLE.BIN/
 # Python .pyc files
 *.pyc
 
+# JSON camera calibration and ROI coordinate files
+*.json
+
+# CSV data output files
+*.csv
+
 # =========================
 # Operating System Files
 # =========================
