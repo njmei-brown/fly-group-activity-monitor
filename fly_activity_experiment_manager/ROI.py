@@ -65,10 +65,24 @@ class set_roi(object):
                 self.rect.set_height(self.diff[1])
                 self.rect.set_xy(self.start_pos)
                 self.ax.figure.canvas.draw()
+                
+    def standardize_coords(self):
+        """
+        This function take the start and end coordinates selected by the user
+        and standardizes them so that the start is always the upper left corner
+        and the end is always the lower right corner
+        """
+        x_coords, y_coords = zip(*(self.start_pos, self.end_pos))
+        
+        #0,0 is top left and max, max is bottom right
+        standardized_start = np.array([min(x_coords), min(y_coords)])
+        standardized_end = np.array([max(x_coords), max(y_coords)])
+        
+        return standardized_start.astype('int'), standardized_end.astype('int')
     
     def on_key_press(self, event):
         if event.key=='n':
-            self.roi = (self.start_pos.astype('int'), self.end_pos.astype('int'))
+            self.roi = self.standardize_coords()
             #print "test"
             self.roi_finalized = True
             plt.close(self.fig)

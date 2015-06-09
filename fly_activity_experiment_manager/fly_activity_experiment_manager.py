@@ -50,9 +50,10 @@ High quality USB camera that supports at least 30 fps that is supported by OpenC
 Arduino (Uno: http://store.arduino.cc/product/A000066)
 
 """
+
+import os
 import sys
 import time
-import serial
 import json
 import timeit
 
@@ -88,8 +89,8 @@ def correct_distortion(input_frame, calib_mtx, calib_dist):
     corrected_frame = cv2.undistort(input_frame, calib_mtx, calib_dist, None, newcameramtx)         
     return corrected_frame
 
-def control_expt(child_conn_obj, data_q_obj, expt_dur, led_freq, led_dur, 
-                 optostim_on_time, optostim_dur, calib_mtx, calib_dist,
+def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, led_dur, 
+                 stim_on_time, stim_dur, calib_mtx, calib_dist,
                  write_video, frame_height, frame_width, fps_cap):
     """
     This function contains the camera read() loop, controls
@@ -106,8 +107,8 @@ def control_expt(child_conn_obj, data_q_obj, expt_dur, led_freq, led_dur,
     led_freq: frequency of LED flashes (Hz)
     led_dur: amount of time LED is on for during flash (time in ms).
              Note: also often called LED 'pulse width'
-    optostim_on_time: at what time during expt to turn on the LEDs? (in seconds)
-    optostim_dur: how long should the led stimulation happen? (in seconds)
+    stim_on_time: at what time during expt to turn on the LEDs? (in seconds)
+    stim_dur: how long should the led stimulation happen? (in seconds)
     
     #video writer options
     write_video: whether or not to write libx264 .avi file
@@ -115,6 +116,7 @@ def control_expt(child_conn_obj, data_q_obj, expt_dur, led_freq, led_dur,
     frame_width: width in pixels of the video to be written
     
     #other
+    use_arduino: specify whether to use an arduino for opto stim or not
     fps_cap: specify a maximum framerate cap to capture at
     """    
     def run_once(f):
@@ -125,57 +127,59 @@ def control_expt(child_conn_obj, data_q_obj, expt_dur, led_freq, led_dur,
         wrapper.has_run = False
         return wrapper
     
-    @run_once
-    def turn_on_stim(led_freq, led_dur):
-        arduino.write('{freq},{dur}'.format(freq=led_freq, dur=led_dur))
-    
-    @run_once
-    def turn_off_stim():
-        arduino.write('0,0')
+    if use_arduino is True:
+        @run_once
+        def turn_on_stim(led_freq, led_dur):
+            arduino.write('{freq},{dur}'.format(freq=led_freq, dur=led_dur))
+        
+        @run_once
+        def turn_off_stim():
+            arduino.write('0,0')
         
     def elapsed_time(start_time):
         return time.clock()-start_time  
     
-    #Initialize the arduino!
-    #Doing it this way prevents the serial reset that occurs!
-    arduino = serial.Serial()
-    arduino.port = 'COM4'
-    arduino.baudrate = 9600
-    arduino.timeout = 0.1
-    arduino.setDTR(False)
-    arduino.open()  
-    time.sleep(1)    
+    if use_arduino is True:
+        import serial
+        #Initialize the arduino!
+        #Doing it this way prevents the serial reset that occurs!
+        arduino = serial.Serial()
+        arduino.port = 'COM6'
+        arduino.baudrate = 9600
+        arduino.timeout = 0.1
+        arduino.setDTR(False)
+        arduino.open()  
+        time.sleep(1)    
     
-    #communicate with arduino with: arduino.write('x,y') 
-    #where 'x' is desired frequency in Hz and 'y' is desired LED on time in ms
-    #immediately write 0 hz and 0 on_time to prevent flashing
-    arduino.write('0,0')    
-
-    if write_video is True:          
-        #Need to still figure what I want the name of the video will be...                     
-        #base_fname = os.path.dirname(self.video_loc)   
-        base_fname = u'C:/Users/Nicholas/Desktop/Python Scripts'
-        timestring = time.strftime("%Y-%m-%d") + "--" + time.strftime("%H-%M")
-        fname = "raw_video--" + timestring
-            
-        ffmpeg_command = [ FFMPEG_BIN,
-                          '-f', 'rawvideo',
-                          '-pix_fmt', 'bgr24',
-                          '-s', '{}x{}'.format(frame_width,frame_height), # size of one frame
-                          '-r', '{}'.format(fps_cap), # frames per second
-                          '-i', '-', # The imput comes from a pipe
-                          '-an', # Tells FFMPEG not to expect any audio
-                          '-vcodec', 'libx264',
-                          '-preset', 'fast',
-                          base_fname + "/{}.avi".format(fname)]
-                                   
-        #Note to self, don't try to redirect stout or sterr to sp.PIPE as filling the pipe up will cause subprocess to hang really bad :(
-        video_writer = sp.Popen(ffmpeg_command, stdin=sp.PIPE)    
+        #communicate with arduino with: arduino.write('x,y') 
+        #where 'x' is desired frequency in Hz and 'y' is desired LED on time in ms
+        #immediately write 0 hz and 0 on_time to prevent flashing
+        arduino.write('0,0')     
     
     #Wait for the start signal from the parent process to begin grabbing frames
     while True:
         msg = child_conn_obj.recv()
         
+        if 'Time' in msg:            
+            timestring = msg.split(":")[-1]            
+            if write_video is True: 
+                base_fname = u'C:/Users/Nicholas/Desktop/fly-activity-assay/Data/{}'.format(timestring)
+                fname = "video--" + timestring
+                    
+                ffmpeg_command = [ FFMPEG_BIN,
+                                  '-f', 'rawvideo',
+                                  '-pix_fmt', 'bgr24',
+                                  '-s', '{}x{}'.format(frame_width,frame_height), # size of one frame
+                                  '-r', '{}'.format(fps_cap), # frames per second
+                                  '-i', '-', # The imput comes from a pipe
+                                  '-an', # Tells FFMPEG not to expect any audio
+                                  '-vcodec', 'libx264',
+                                  '-preset', 'fast',
+                                  base_fname + "/{}.avi".format(fname)]
+                                           
+                #Note to self, don't try to redirect stout or sterr to sp.PIPE as filling the pipe up will cause subprocess to hang really bad :(
+                video_writer = sp.Popen(ffmpeg_command, stdin=sp.PIPE)   
+                
         if msg == 'Start!':
             break 
         
@@ -185,7 +189,7 @@ def control_expt(child_conn_obj, data_q_obj, expt_dur, led_freq, led_dur,
     cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.0)
     cam.set(cv2.CAP_PROP_GAIN, 0.0)
     #Give some time for the capture settings to 'sink' in
-    time.sleep(4)
+    time.sleep(5)
         
     #start the clock!!
     expt_start_time = time.clock() 
@@ -209,18 +213,21 @@ def control_expt(child_conn_obj, data_q_obj, expt_dur, led_freq, led_dur,
             # to the post-processing and analysis portion of script             
             data_q_obj.put_nowait((elapsed_time(expt_start_time), frame, stim_bool))
             
-            if elapsed_time(expt_start_time) >= optostim_on_time + optostim_dur:
-                turn_off_stim()
+            if elapsed_time(expt_start_time) >= stim_on_time + stim_dur:
+                if use_arduino is True:
+                    turn_off_stim()
                 stim_bool = False
-            elif elapsed_time(expt_start_time) >= optostim_on_time:
-                turn_on_stim(led_freq, led_dur)
+            elif elapsed_time(expt_start_time) >= stim_on_time:
+                if use_arduino is True:
+                    turn_on_stim(led_freq, led_dur)
                 stim_bool = True
                 
             if elapsed_time(expt_start_time) >= expt_dur:
                 data_q_obj.put_nowait((elapsed_time(expt_start_time),'stop', stim_bool))
                 child_conn_obj.close()
                 data_q_obj.close()
-                arduino.close()            
+                if use_arduino is True:
+                    arduino.close()            
                 if write_video is True:
                     video_writer.stdin.close()
                     video_writer.wait()
@@ -228,12 +235,13 @@ def control_expt(child_conn_obj, data_q_obj, expt_dur, led_freq, led_dur,
 
 class experiment(object):
     def __init__(self, calib_loc="Camera_ELP_v2_calibration_matrices.json", 
-                 set_rois = False, debug=False, write_video=False, 
+                 set_rois = False, debug=False, write_video=False, use_arduino=False,
                  line_mode ='vertical', expt_dur = 60, led_freq = 5, led_dur=5,
-                 optostim_on_time=60, optostim_dur = 60, fps_cap = None):
+                 stim_on_time=60, stim_dur = 60, fps_cap = None):
         
         self.debug = debug
         self.write_video = write_video
+        self.use_arduino = use_arduino
         self.calib_loc = calib_loc
         self.set_rois = set_rois
         
@@ -241,13 +249,16 @@ class experiment(object):
         self.expt_dur = expt_dur
         self.led_freq = led_freq
         self.led_dur = led_dur
-        self.optostim_on_time = optostim_on_time
-        self.optostim_dur = optostim_dur   
+        self.stim_on_time = stim_on_time
+        self.stim_dur = stim_dur   
                                             
         #load in and read webcam calibration files        
         calib_data = self.read_cam_calibration_file(self.calib_loc)
         self.calib_mtx = calib_data["camera_matrix"]
         self.calib_dist = calib_data["dist_coeff"]
+        
+        print "Finished loading camera calibration data!"
+        sys.stdout.flush()
         
         if fps_cap is None:        
             #Need to figure out what the effective fps of the camera is...
@@ -257,16 +268,23 @@ class experiment(object):
             #time how long it takes to read 30 frames 10 times in a row
             self.fps = (5*30)/fps_timer.timeit(5)        
         else:
-            self.fps = fps_cap
-        
+            self.fps = fps_cap        
         #start webcam video capture instance. Use directshow instead of VFW
-        sample_cam  = cv2.VideoCapture(cv2.CAP_DSHOW + 0)  
-        #Prevent camera from doing auto-gain
-        sample_cam.set(cv2.CAP_PROP_GAIN, 0.0)                    
-        #grab frame of video from the webcam
-        _, self.sample_frame = sample_cam.read()
+        sample_cam  = cv2.VideoCapture(cv2.CAP_DSHOW + 0)
+        #We don't want the camera to try to autogain as it messes up the image
+        sample_cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.0)
+        sample_cam.set(cv2.CAP_PROP_GAIN, 0.0)        
+        #grab frames of video from the webcam
+        sample_frames = []
+        for x in range(60):
+            sample_frames.append(sample_cam.read())           
+        _, self.sample_frame = sample_frames[-1]
         self.sample_frame = correct_distortion(self.sample_frame, self.calib_mtx, self.calib_dist)
         sample_cam.release()       
+            
+        print "Finished collecting sample video frames!"
+        sys.stdout.flush()
+        
         #Need to figure out what the dimensions of the output frames will be
         self.frame_height, self.frame_width = self.sample_frame.shape[:2]
         
@@ -274,21 +292,24 @@ class experiment(object):
         self.parent_conn, self.child_conn = mp.Pipe()
         self.data_q = mp.Queue()      
         
-        proc_args = (self.child_conn, self.data_q,
+        proc_args = (self.child_conn, self.data_q, self.use_arduino,
                      self.expt_dur, self.led_freq, 
-                     self.led_dur, self.optostim_on_time, 
-                     self.optostim_dur, self.calib_mtx, self.calib_dist, 
+                     self.led_dur, self.stim_on_time, 
+                     self.stim_dur, self.calib_mtx, self.calib_dist, 
                      self.write_video, self.frame_height, 
                      self.frame_width, self.fps)                 
         self.control_expt_process = mp.Process(target=control_expt, args=proc_args)                                    
         #start the control_expt process!
         self.control_expt_process.start()
         
+        print "Finished starting parallel experiment control process!"
+        sys.stdout.flush()
+        
         if set_rois is True:
             self.roi_list = [('blue', 'line1'), ('red', 'line2'),
                              ('blue', 'roi1'), ('red', 'roi2'), 
                              ('green', 'roi3'), ('purple', 'roi4')]
-                             
+            
             for roi_color, roi_name in self.roi_list:                
                 if 'roi' in roi_name:
                     setattr(self, roi_name, ROI.set_roi(roi_color, background_img = self.sample_frame))
@@ -302,8 +323,13 @@ class experiment(object):
             #normalize the roi_list to what you would encounter when loading
             self.roi_list = [element[1] for element in self.roi_list] 
             
+            print "Finished setting all ROIs!"
+            sys.stdout.flush()
+            
         else:
             self.load_rois("FlyActivityCounter_ROIs.json")
+            print "Finished loading all ROIs!"
+            sys.stdout.flush()
             
     def read_cam_calibration_file(self, filepath):
         """
@@ -321,20 +347,27 @@ class experiment(object):
                               "dist_coeff": np.array(data["dist_coeff"])}                             
         return processed_data                                            
         
-    def save_rois(self):        
-        data = {roi_name: zip(*self.roi_dict[roi_name]) for roi_color, roi_name in self.roi_list}                   
+    def save_rois(self):     
+        data = {roi_name: [list(coord) for coord in self.roi_dict[roi_name]] for roi_color, roi_name in self.roi_list}                   
         fname = "FlyActivityCounter_ROIs.json"   
+
+        if os.path.exists(fname):
+            os.remove(fname)
+        
         #defaults to saving to same directory as where the script is located    
         with open(fname, "w") as f:
             json.dump(data, f)
     
     def load_rois(self, filepath):
-        with open(filepath, 'r') as data_file:
-            data = json.load(data_file)            
-            #regenerate the roi names that exist in the data_file
-            self.roi_list = sorted([str(roi_key) for roi_key in data.keys()])            
-            #regenerate the roi dictionary that allows lookup of roi coordinates
-            self.roi_dict = {roi_name:tuple([np.array(element) for element in data[roi_name]]) for roi_name in self.roi_list}            
+        if os.path.exists(filepath):
+            with open(filepath, 'r') as data_file:
+                data = json.load(data_file)            
+                #regenerate the roi names that exist in the data_file
+                self.roi_list = sorted([str(roi_key) for roi_key in data.keys()])            
+                #regenerate the roi dictionary that allows lookup of roi coordinates
+                self.roi_dict = {roi_name:tuple([np.array(element) for element in data[roi_name]]) for roi_name in self.roi_list}   
+        else:
+            print "Loading ROI failed! Check if the file exists at: {}".format(filepath)
         
     def wait_for_roi(self, roi_instance):
         """
@@ -351,26 +384,32 @@ class experiment(object):
         # Some kernels to do morphology operations with
         kernel1 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
         kernel2 = np.ones((3,3),np.uint8)   
-        
-        rect = list(chain(*roi_coords))        
+        #each position is in array([x,y]) format        
+        start_pos, end_pos = roi_coords        
         #Image cropping works by img[y: y + h, x: x + w]
-        cropped_current_frame = current_frame[rect[2]:rect[3], rect[0]:rect[1]]    
+        cropped_current_frame = current_frame[start_pos[1]:end_pos[1], start_pos[0]:end_pos[0]]            
         #Apply the appropriate background subtractor to the cropped current frame of the video
-        cropped_fgmask = bg_subtractor.apply(cropped_current_frame)
-        
+        cropped_fgmask = bg_subtractor.apply(cropped_current_frame)      
         # Apply a medianblur filter and then morphological dilate to 
         # remove noise and consolidate detections        
-        filtered = cv2.medianBlur(cropped_fgmask,7)             
-        dilate = cv2.morphologyEx(filtered, cv2.MORPH_DILATE, kernel1)
-            
+        filtered = cv2.medianBlur(cropped_fgmask,7)                     
+        dilate = cv2.dilate(filtered, kernel1)
+           
         image, contours, hierarchy = cv2.findContours(dilate, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)      
         cv2.drawContours(cropped_current_frame, contours, -1, (255,0,0), 2)    
         
         return((len(contours), cropped_current_frame)) 
     
-    def start_expt(self):        
+    def start_expt(self):  
+        self.expt_timestring = time.strftime("%Y-%m-%d") + " " + time.strftime("%H.%M")
+        #create new directory for the data we are about to generate
+        self.save_dir = u'C:/Users/Nicholas/Desktop/fly-activity-assay/Data/{}'.format(self.expt_timestring)
+        if os.path.isdir(self.save_dir) is False:
+            os.makedirs(self.save_dir)  
+            
+        self.parent_conn.send('Time:{}'.format(self.expt_timestring))
+            
         self.parent_conn.send('Start!')
-        self.expt_timestring = time.strftime("%Y-%m-%d") + " " + time.strftime("%H.%M") 
         #give a second for the child process to get started
         time.sleep(1)
         
@@ -380,8 +419,7 @@ class experiment(object):
         self.bg_sub_dict = {roi_name:cv2.createBackgroundSubtractorKNN(5,300,False) for roi_name in self.roi_list}
         
         prev_time_stamp = 0        
-        self.max_q_size = 0       
-        
+        self.max_q_size = 0               
         #setup a dictionary of lists for analysis results
         self.plotting_dict = {}
         #setup a ditionary of deques for plotting
@@ -399,7 +437,7 @@ class experiment(object):
             ax.tick_params(top="off",right="off")
             ax.spines['right'].set_visible(False)
             ax.spines['top'].set_visible(False)   
-            ax.axvspan(self.optostim_on_time, self.optostim_on_time+self.optostim_dur, facecolor='r', alpha=0.25, edgecolor = 'none')        
+            ax.axvspan(self.stim_on_time, self.stim_on_time+self.stim_dur, facecolor='r', alpha=0.25, edgecolor = 'none')        
             ax.tick_params(axis='x', pad=5)     
             ax.tick_params(axis='y', pad=5)            
             #make only every other axis label visible
@@ -495,25 +533,49 @@ class experiment(object):
               
                 update_plots(lns, backgs)
                 
-        #Okay we've finished analyzing all the data. Time to save it out.                
+        #Okay we've finished analyzing all them data. Time to save it out.                
         import csv
         results_keys = sorted(self.results_dict.keys())
         
         for key in results_keys:        
-            with open("{}-{}.csv".format(self.expt_timestring, key), "wb") as outfile:
+            with open("{}/{}-{}.csv".format(self.save_dir, self.expt_timestring, key), "wb") as outfile:
                 writer = csv.writer(outfile)
                 writer.writerow(["Time Elapsed (sec)", "Number of active flies", "Stimulation"])
                 writer.writerows(self.results_dict[key])
                 
+        print "CSVs written to data folder! Experiment is complete! Ready for the next one!"
+                
 if __name__ == '__main__':     
     
-    #fps cap of 20 will result in stable performance
-    #higher fps cap (up to 30) is possible but will incur a linearly increasing
-    #(with time) system memory cost.
+    #fps cap of 30 will result in stable performance
+    #higher fps cap is possible (with a better camera) but will 
+    #incur a linearly increasing (with time) system memory cost.
+
+#    #experiment relevant options
+#    expt_dur: duration of the entire experiment (in seconds)
+#    led_freq: frequency of LED flashes (Hz)
+#    led_dur: amount of time LED is on for during flash (time in ms).
+#             Note: also often called LED 'pulse width'
+#    stim_on_time: at what time during expt to turn on the LEDs? (in seconds)
+#    stim_dur: how long should the led stimulation happen? (in seconds)
+#    
+#    #video writer options
+#    write_video: whether or not to write libx264 .avi file
+#    frame_height: height in pixels of the video to be written
+#    frame_width: width in pixels of the video to be written
+#    
+#    #other
+#    use_arduino: specify whether to use an arduino for opto stim or not
+#    fps_cap: specify a maximum framerate cap to capture at
 
     # example call where the following occurs:
     # experimental setup, 5 second delay, and then subsequent start of expt
-    x = experiment(write_video=True, set_rois=False, expt_dur = 3600, led_freq = 50, led_dur=5, optostim_on_time=2400, optostim_dur = 600, fps_cap=30)
-    time.sleep(5)
-    x.start_expt()
+    expt = experiment(write_video=True, set_rois=True, use_arduino=True, 
+                      expt_dur = 300, led_freq = 120, led_dur=10, stim_on_time= 120, 
+                      stim_dur = 60, fps_cap=30)
+                                            
+    print "Setup complete! Ready to start the experiment!"
+    sys.stdout.flush()
+    #time.sleep(5)
+    #expt.start_expt()
     pass
