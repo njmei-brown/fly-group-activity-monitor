@@ -35,6 +35,26 @@ def preview_camera():
         
     cam.release()
     cv2.destroyAllWindows()
+    
+def preview_background_subtractor():
+    cam = cv2.VideoCapture(0)
+    
+    bg = cv2.createBackgroundSubtractorKNN(5,300,False)
+    
+    while True:
+        _, img = cam.read()
+        
+        fgmask = bg.apply(img)
+        
+        cv2.imshow('preview', img)
+        cv2.imshow('background subtracted', fgmask)
+        
+        k = cv2.waitKey(30) & 0xff
+        if k == 27:
+            break
+               
+    cam.release()
+    cv2.destroyAllWindows()
 
 def calibrate_camera():
     """
