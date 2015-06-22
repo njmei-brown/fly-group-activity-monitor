@@ -22,13 +22,18 @@ with other more sophisticated tracking software packages (i.e. C-Trax, Jabba, et
 Required software:
 
 1) Python 2.7+ (Anaconda distribution is highly highly recommended: https://store.continuum.io/cshop/anaconda/)
+
 2) OpenCV with python bindings RC 3.0+ (http://opencv.org/downloads.html)
+
 3) FFMPEG 64-bit Zeranoe build (http://ffmpeg.zeranoe.com/builds/, see also: http://www.wikihow.com/Install-FFmpeg-on-Windows)
+
 4) Needs a camera calibration file (see the Cam_calibration.py file for details)
 
 Setup particulars:
+
 1) Flies need to be IR backlit and cameras must have an IR filter fitted for tracking
 and all components of the experimental setup to work properly.
+
 2) Arduino's need to be loaded with the 'Opto-blink' sketch
 
 Required Computer hardware:
@@ -36,13 +41,19 @@ Required Computer hardware:
 Minimum (untested but should work in theory...):
 
 2-core processor is needed (higher clock rate is better)
+
 8-16 GB RAM
+
 USB camera that is supported by OpenCV
+
 Arduino (Uno: http://store.arduino.cc/product/A000066)
 
 Recommended:
 
 4-core processor (higher clock rate is better) - will ensure fast FFMPEG encoding
+
 16-32 GB RAM
+
 High quality USB camera that supports at least 30 fps that is supported by OpenCV
+
 Arduino (Uno: http://store.arduino.cc/product/A000066)
