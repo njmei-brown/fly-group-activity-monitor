@@ -48,8 +48,8 @@ def calibrate_camera():
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
     
     # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
-    objp = np.zeros((6*7,3), np.float32)
-    objp[:,:2] = np.mgrid[0:7,0:6].T.reshape(-1,2)
+    objp = np.zeros((6*6,3), np.float32)
+    objp[:,:2] = np.mgrid[0:6,0:6].T.reshape(-1,2)
     
     # Arrays to store object points and image points from all the images.
     objpoints = [] # 3d point in real world space
@@ -69,7 +69,7 @@ def calibrate_camera():
         gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
     
         # Find the chess board corners
-        ret, corners = cv2.findChessboardCorners(gray, (7,6),None)
+        ret, corners = cv2.findChessboardCorners(gray, (6,6), cv2.CALIB_CB_FAST_CHECK)
     
         # If found, add object points, image points (after refining them)
         if ret == True:
@@ -79,12 +79,12 @@ def calibrate_camera():
             imgpoints.append(corners2)
     
             # Draw and display the corners
-            cv2.drawChessboardCorners(img, (7,6), corners2,ret)
+            cv2.drawChessboardCorners(img, (6,6), corners2,ret)
             cv2.imshow('Chessboard Corners Found!',img)
             k = cv2.waitKey(30) & 0xff
             
             print len(imgpoints)
-            if len(imgpoints) > 150 or k==27:
+            if len(imgpoints) > 300 or k==27:
                 break
             
     cam.release()
@@ -124,7 +124,7 @@ def calibrate_camera():
             "camera_matrix": mtx.tolist(),
             "dist_coeff": dist.tolist()}
             
-    fname = "Camera_ELP_v2_calibration_matrices.json"
+    fname = "Camera_ELP_v3_calibration_matrices.json"
     
     #defaults to saving to desktop
     
@@ -155,7 +155,7 @@ def read_cam_calibration_file(filepath):
 def test_calibration():
     cam = cv2.VideoCapture(cv2.CAP_DSHOW + 0)
     
-    data = read_cam_calibration_file("Camera_ELP_v2_calibration_matrices.json")    
+    data = read_cam_calibration_file("Camera_ELP_v3_calibration_matrices.json")    
     mtx = data["camera_matrix"]
     dist = data["dist_coeff"]
     

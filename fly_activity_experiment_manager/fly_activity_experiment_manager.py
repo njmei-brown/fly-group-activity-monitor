@@ -126,15 +126,6 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
                 return f(*args, **kwargs)
         wrapper.has_run = False
         return wrapper
-    
-    if use_arduino is True:
-        @run_once
-        def turn_on_stim(led_freq, led_dur):
-            arduino.write('{freq},{dur}'.format(freq=led_freq, dur=led_dur))
-        
-        @run_once
-        def turn_off_stim():
-            arduino.write('0,0')
         
     def elapsed_time(start_time):
         return time.clock()-start_time  
@@ -155,11 +146,22 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
         #where 'x' is desired frequency in Hz and 'y' is desired LED on time in ms
         #immediately write 0 hz and 0 on_time to prevent flashing
         arduino.write('0,0')     
+        
+        @run_once
+        def turn_on_stim(led_freq, led_dur):
+            arduino.write('{freq},{dur}'.format(freq=led_freq, dur=led_dur))
+        
+        @run_once
+        def turn_off_stim():
+            arduino.write('0,0')
     
     #Wait for the start signal from the parent process to begin grabbing frames
     while True:
         msg = child_conn_obj.recv()
         
+        #The parent process will send a timestamp right before sending the 
+        #'Start' signal. This allows all file names to be synchronized to when
+        #the expt.start_expt() command is called.
         if 'Time' in msg:            
             timestring = msg.split(":")[-1]            
             if write_video is True: 
@@ -337,15 +339,18 @@ class experiment(object):
         reprojection error, camera_matrix, and distance_coefficient produced by
         the cv2.calibrateCamera() function
         """
-        with open(filepath, 'r') as data_file:
-            data = json.load(data_file)
-            
-        processed_data = {}
-        if data:
-            processed_data = {"reprojection_error": data["reprojection_error"], 
-                              "camera_matrix": np.array(data["camera_matrix"]),
-                              "dist_coeff": np.array(data["dist_coeff"])}                             
-        return processed_data                                            
+        if os.path.exists(filepath):        
+            with open(filepath, 'r') as data_file:
+                data = json.load(data_file)
+                
+            processed_data = {}
+            if data:
+                processed_data = {"reprojection_error": data["reprojection_error"], 
+                                  "camera_matrix": np.array(data["camera_matrix"]),
+                                  "dist_coeff": np.array(data["dist_coeff"])}                             
+            return processed_data
+        else:
+            print "Loading camera calibration failed! Check if the file exists at: {}".format(filepath)                                 
         
     def save_rois(self):     
         data = {roi_name: [list(coord) for coord in self.roi_dict[roi_name]] for roi_color, roi_name in self.roi_list}                   
@@ -453,8 +458,7 @@ class experiment(object):
         lns = [ax.plot([],[])[0] for ax in chain(*axes)]        
         
         while True:            
-            time_stamp, frame, stim_bool = self.data_q.get()
-            
+            time_stamp, frame, stim_bool = self.data_q.get()            
             #check if the experiment data collection has completed
             if frame == 'stop':
                 #let's close everything down
@@ -467,8 +471,7 @@ class experiment(object):
                 self.control_expt_process.terminate()
                 break
             
-            elif type(frame) is np.ndarray:
-                
+            elif type(frame) is np.ndarray:                
                 #print frame.dtype, frame.size
                 #print (time_stamp, stim_bool)            
                 fps = 1/(time_stamp-prev_time_stamp)
@@ -541,8 +544,7 @@ class experiment(object):
             with open("{}/{}-{}.csv".format(self.save_dir, self.expt_timestring, key), "wb") as outfile:
                 writer = csv.writer(outfile)
                 writer.writerow(["Time Elapsed (sec)", "Number of active flies", "Stimulation"])
-                writer.writerows(self.results_dict[key])
-                
+                writer.writerows(self.results_dict[key])                
         print "CSVs written to data folder! Experiment is complete! Ready for the next one!"
                 
 if __name__ == '__main__':     
