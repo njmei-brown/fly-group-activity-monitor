@@ -20,8 +20,7 @@ and pulse width of LED diodes for optogenetic experiments.
 collected video during an experiment to '.avi' format for subsequent analysis 
 with other more sophisticated tracking software packages (i.e. C-Trax, Jabba, etc...).
 
-3) Will eventually be able to produce real time activity plots of the activity
-for 4 differents ROIs as well as two 'line crossing beams'.
+3) Can produce real time activity plots for 4 differents ROIs.
 
 Required software:
 
