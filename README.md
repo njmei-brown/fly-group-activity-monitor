@@ -3,7 +3,7 @@ Set of functions and scripts to do real time fly activity quantitation with the 
 
 Overview:
 
-The Fly Activity Experiment Manager allows for quantitation of fly motion 
+The Fly Activity Assay allows for quantitation of fly motion 
 (i.e. the number of flies moving in a given frame) during various experimental 
 paradigms. Importantly, this movement quantitation is done in real-time 
 (or near real-time).
