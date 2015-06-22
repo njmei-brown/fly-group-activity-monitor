@@ -36,19 +36,13 @@ Required Computer hardware:
 Minimum (untested but should work in theory...):
 
 2-core processor is needed (higher clock rate is better)
-
 8-16 GB RAM
-
 USB camera that is supported by OpenCV
-
 Arduino (Uno: http://store.arduino.cc/product/A000066)
 
 Recommended:
 
 4-core processor (higher clock rate is better) - will ensure fast FFMPEG encoding
-
 16-32 GB RAM
-
 High quality USB camera that supports at least 30 fps that is supported by OpenCV
-
 Arduino (Uno: http://store.arduino.cc/product/A000066)
