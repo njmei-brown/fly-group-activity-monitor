@@ -9,7 +9,6 @@ Package so that the ROI and LINE classes are a separate import.
 Allows user to draw rectangular ROIs as well as 'beam crossing' lines.
 """
 import numpy as np
-
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
@@ -17,17 +16,18 @@ class set_roi(object):
     """
     Class to set an roi in an image.
     Saves start of ROI on mouse button press and saves end of ROI on mouse button release
+    Need to specify an roi_color to use as well as a background_img to draw the roi on
     """
-    def __init__(self, roi_color, background_img):        
+    def __init__(self, roi_color, background_img, roi_selection_msg = "Press the 'n' key on your keyboard when you are happy with the ROI"):        
         self.fig, self.ax = plt.subplots()
         self.fig.set_size_inches((11, 8.5), forward=True)
         self.ax.imshow(background_img)
-        self.fig.suptitle("Press the 'n' key on your keyboard when you are happy with the ROI", size=14)
+        self.fig.suptitle(roi_selection_msg, size=16)
 
         self.type = 'roi'        
         self.color = roi_color
         self.bg_img = background_img
-        self.rect = Rectangle((0,0), 0, 0, edgecolor = 'black', color=self.color, alpha=0.4)
+        self.rect = Rectangle((0,0), 0, 0, color=self.color, alpha=0.4)
         
         self.start_pos = None
         self.end_pos = None   
@@ -39,7 +39,7 @@ class set_roi(object):
         self.ax.figure.canvas.mpl_connect('button_press_event', self.on_mouse_press)
         self.ax.figure.canvas.mpl_connect('button_release_event', self.on_mouse_release)
         self.ax.figure.canvas.mpl_connect('motion_notify_event', self.on_mouse_motion)
-        self.ax.figure.canvas.mpl_connect('key_press_event', self.on_key_press)     
+        self.ax.figure.canvas.mpl_connect('key_press_event', self.on_key_press) 
 
     def on_mouse_press(self, event):
         self.released = False
@@ -86,6 +86,16 @@ class set_roi(object):
             #print "test"
             self.roi_finalized = True
             plt.close(self.fig)
+            
+    def wait_for_roi(self):
+        """
+        Function that allows scripts that invoke roi classes to wait for user to set ROI
+        """
+        while True:
+            plt.pause(0.0001)
+            if self.roi_finalized is True:
+                print("ROI is finalized")
+                break
           
 class set_line(object):
     """
@@ -94,11 +104,11 @@ class set_line(object):
     
     line will have a bit of thickness as it is essentially a very thin rectangular ROI
     """    
-    def __init__(self, line_color, background_img, line_width=3, line_mode = 'vertical'):        
+    def __init__(self, line_color, background_img, line_width=3, line_mode = 'vertical', roi_selection_msg = "Press the 'n' key on your keyboard when you are happy with the ROI"):        
         self.fig, self.ax = plt.subplots()
         self.fig.set_size_inches((11, 8.5), forward=True)
         self.ax.imshow(background_img)
-        self.fig.suptitle("Press the 'n' key on the keyboard when you are happy with the line", size=14)
+        self.fig.suptitle(roi_selection_msg, size=16)
 
         self.type = 'line'        
         self.line_width=line_width
@@ -111,7 +121,7 @@ class set_line(object):
         self.end_pos = None
         self.roi = None
         self.roi_finalized = False        
-        self.line = Rectangle((0,0), 0, 0, edgecolor = 'black', color=self.color, alpha=0.4)        
+        self.line = Rectangle((0,0), 0, 0, color=self.color, alpha=0.4)        
         
         self.ax.add_patch(self.line)
         self.ax.figure.canvas.mpl_connect('button_press_event', self.on_mouse_press)
@@ -147,3 +157,13 @@ class set_line(object):
             #print "test"
             self.roi_finalized = True
             plt.close(self.fig)
+            
+    def wait_for_roi(self):
+        """
+        Function that allows scripts that invoke roi classes to wait for user to set ROI
+        """
+        while True:
+            plt.pause(0.0001)
+            if self.roi_finalized is True:
+                print("ROI is finalized")
+                break

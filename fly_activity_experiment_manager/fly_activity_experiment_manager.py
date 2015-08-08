@@ -11,50 +11,13 @@ The Fly Activity Experiment Manager allows for quantitation of fly motion
 paradigms. Importantly, this movement quantitation is done in real-time 
 (or near real-time).
 
-Features:
-
-1) Can communicate with an arduino to control the onset time, duration, frequency,
-and pulse width of LED diodes for optogenetic experiments.
-
-2) Can directly write out 'raw' (corrected for camera lens barrel distortions)
-collected video during an experiment to '.avi' format for subsequent analysis 
-with other more sophisticated tracking software packages (i.e. C-Trax, Jabba, etc...).
-
-3) Can produce real time activity plots for 4 differents ROIs.
-
-Required software:
-
-1) Python 2.7+ (Anaconda distribution is highly highly recommended: https://store.continuum.io/cshop/anaconda/)
-2) OpenCV with python bindings RC 3.0+ (http://opencv.org/downloads.html)
-3) FFMPEG 64-bit Zeranoe build (http://ffmpeg.zeranoe.com/builds/, see also: http://www.wikihow.com/Install-FFmpeg-on-Windows)
-4) Needs a camera calibration file (see the Cam_calibration.py file for details)
-
-Setup particulars:
-1) Flies need to be IR backlit and cameras must have an IR filter fitted for tracking
-and all components of the experimental setup to work properly.
-2) Arduino's need to be loaded with the 'Opto-blink' sketch
-
-Required Computer hardware:
-
-Minimum (untested so I'm not 100% sure this would actually work):
-2-core processor is needed (higher clock rate is better)
-8-16 GB RAM
-USB camera that is supported by OpenCV
-Arduino (Uno: http://store.arduino.cc/product/A000066)
-
-Recommended:
-4-core processor (higher clock rate is better) - will ensure fast FFMPEG encoding
-16-32 GB RAM
-High quality USB camera that supports at least 30 fps that is supported by OpenCV
-Arduino (Uno: http://store.arduino.cc/product/A000066)
-
 """
-
 import os
 import sys
 import time
 import json
 import timeit
+import serial
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -64,8 +27,9 @@ import subprocess as sp
 from itertools import chain
 from collections import deque
 
-import ROI
 import cv2
+
+import roi
 
 #Note to self: Using interactive interpreter elements works horribly with multiprocessing...
 #Ipython functionality to disable inline matplotlib plots
@@ -84,13 +48,14 @@ def correct_distortion(input_frame, calib_mtx, calib_dist):
     """
     h, w = input_frame.shape[:2]        
     #apply undistortion
-    newcameramtx, roi = cv2.getOptimalNewCameraMatrix(calib_mtx,calib_dist,(w,h),1,(w,h))
+    newcameramtx, region = cv2.getOptimalNewCameraMatrix(calib_mtx,calib_dist,(w,h),1,(w,h))
     corrected_frame = cv2.undistort(input_frame, calib_mtx, calib_dist, None, newcameramtx)         
     return corrected_frame
 
 def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, led_dur, 
                  stim_on_time, stim_dur, calib_mtx, calib_dist,
-                 write_video, frame_height, frame_width, fps_cap):
+                 write_video, frame_height, frame_width, fps_cap,
+                 default_save_dir):
     """
     This function contains the camera read() loop, controls
     the timing/freq/duration for when the arduino turns on and off the 
@@ -118,44 +83,45 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
     use_arduino: specify whether to use an arduino for opto stim or not
     fps_cap: specify a maximum framerate cap to capture at
     """    
-    def run_once(f):
-        def wrapper(*args, **kwargs):
-            if not wrapper.has_run:
-                wrapper.has_run = True
-                return f(*args, **kwargs)
-        wrapper.has_run = False
-        return wrapper
         
     def elapsed_time(start_time):
         return time.clock()-start_time  
     
-    if use_arduino is True:
-        import serial
+    if use_arduino:
         #Initialize the arduino!
         #Doing it this way prevents the serial reset that occurs!
         arduino = serial.Serial()
-        arduino.port = 'COM6'
-        arduino.baudrate = 9600
-        arduino.timeout = 0.1
+        arduino.port = 'COM7'
+        arduino.baudrate = 115200
+        arduino.timeout = 0.05
         arduino.setDTR(False)
         arduino.open()  
         time.sleep(1)    
+        #When serial connection is made, arduino opto-blink script sends an initial
+        #"OFF" signal. We'll just read the line and empty the serial buffer
+        arduino.readline()
+        arduino.is_on = False
     
         #communicate with arduino with: arduino.write('x,y') 
         #where 'x' is desired frequency in Hz and 'y' is desired LED on time in ms
         #immediately write 0 hz and 0 on_time to prevent flashing
         arduino.write('0,0')     
-        
-        @run_once
+
         def turn_on_stim(led_freq, led_dur):
             arduino.write('{freq},{dur}'.format(freq=led_freq, dur=led_dur))
+            arduino_state = arduino.readline()
+            if str(arduino_state) == 'ON':
+                arduino.is_on = True
         
-        @run_once
         def turn_off_stim():
             arduino.write('0,0')
+            arduino_state = arduino.readline()
+            if str(arduino_state) == 'OFF':
+                arduino.is_on = False
     
     #Wait for the start signal from the parent process to begin grabbing frames
     while True:
+        #This will block until it receives the message it was waiting for
         msg = child_conn_obj.recv()
         
         #The parent process will send a timestamp right before sending the 
@@ -163,8 +129,8 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
         #the expt.start_expt() command is called.
         if 'Time' in msg:            
             timestring = msg.split(":")[-1]            
-            if write_video is True: 
-                base_fname = u'C:/Users/Nicholas/Desktop/fly-activity-assay/Data/{}'.format(timestring)
+            if write_video: 
+                base_fname = '{}'.format(os.path.abspath(os.path.join(default_save_dir,timestring)))
                 fname = "video--" + timestring
                     
                 ffmpeg_command = [ FFMPEG_BIN,
@@ -176,6 +142,7 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
                                   '-an', # Tells FFMPEG not to expect any audio
                                   '-vcodec', 'libx264',
                                   '-preset', 'fast',
+                                  #'-qp', '0', #"-qp 0" specifies lossless output
                                   base_fname + "/{}.avi".format(fname)]
                                            
                 #Note to self, don't try to redirect stout or sterr to sp.PIPE as filling the pipe up will cause subprocess to hang really bad :(
@@ -187,18 +154,24 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
     #initilize the video capture object
     cam  = cv2.VideoCapture(cv2.CAP_DSHOW + 0) 
     #We don't want the camera to try to autogain as it messes up the image
-    cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.0)
-    cam.set(cv2.CAP_PROP_GAIN, 0.0)
-    #Give some time for the capture settings to 'sink' in
-    time.sleep(5)
+    #So start acquiring some frames to avoid the autogain frames
+    for x in range(30):
+        ret, temp = cam.read()        
         
     #start the clock!!
     expt_start_time = time.clock() 
     fps_cap_timer = time.clock()
-    stim_bool = False
+    stim_bool = False 
     
     #camera read and experiment control loop
     while True:
+        
+        #poll to see if there is any data to read, we don't want this to block
+        if child_conn_obj.poll():
+            msg = child_conn_obj.recv()
+        if msg == 'Shutdown!':
+            data_q_obj.put_nowait((elapsed_time(expt_start_time),'stop', stim_bool))
+            break
         
         #enforce an FPS cap such that camera read speed cannot be faster than the cap
         if elapsed_time(fps_cap_timer) >= 1/float(fps_cap):   
@@ -215,36 +188,47 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
             data_q_obj.put_nowait((elapsed_time(expt_start_time), frame, stim_bool))
             
             if elapsed_time(expt_start_time) >= stim_on_time + stim_dur:
-                if use_arduino is True:
-                    turn_off_stim()
+                if use_arduino:
+                    if getattr(arduino, "is_on"):
+                        turn_off_stim()
                 stim_bool = False
             elif elapsed_time(expt_start_time) >= stim_on_time:
-                if use_arduino is True:
-                    turn_on_stim(led_freq, led_dur)
+                if use_arduino:
+                    if not getattr(arduino, "is_on"):
+                        turn_on_stim(led_freq, led_dur)
                 stim_bool = True
                 
             if elapsed_time(expt_start_time) >= expt_dur:
                 data_q_obj.put_nowait((elapsed_time(expt_start_time),'stop', stim_bool))
-                child_conn_obj.close()
-                data_q_obj.close()
-                if use_arduino is True:
-                    arduino.close()            
-                if write_video is True:
-                    video_writer.stdin.close()
-                    video_writer.wait()
                 break
+            
+    #clean up connections before closing process
+    child_conn_obj.close()
+    data_q_obj.close()
+    if use_arduino:
+        turn_off_stim()
+        arduino.close()            
+    if write_video:
+        video_writer.stdin.close()
+        video_writer.wait()
+    cam.release()
 
 class experiment(object):
-    def __init__(self, calib_loc="Camera_ELP_v2_calibration_matrices.json", 
-                 set_rois = False, debug=False, write_video=False, use_arduino=False,
-                 line_mode ='vertical', expt_dur = 60, led_freq = 5, led_dur=5,
-                 stim_on_time=60, stim_dur = 60, fps_cap = None):
-        
-        self.debug = debug
+    def __init__(self, expt_conn_obj=None, write_video=False, write_csv=False,
+                 use_arduino=False, expt_dur = 60, led_freq = 5, led_dur=5, 
+                 stim_on_time=60, stim_dur = 60, fps_cap = None, 
+                 roi_list = None, roi_dict = None, gui_cam_calib_data = None, 
+                 default_save_dir = u'C:/Users/Nicholas/Desktop/fly-activity-assay/Data/',
+                 line_mode ='vertical'):
+                
+        if expt_conn_obj:
+            self.expt_conn_obj = expt_conn_obj          
+                
+        self.write_csv = write_csv
         self.write_video = write_video
         self.use_arduino = use_arduino
-        self.calib_loc = calib_loc
-        self.set_rois = set_rois
+        self.default_calib_loc = "Camera_calibration_matrices.json"
+        self.default_save_dir = default_save_dir        
         
         #actual experiment settings        
         self.expt_dur = expt_dur
@@ -252,16 +236,19 @@ class experiment(object):
         self.led_dur = led_dur
         self.stim_on_time = stim_on_time
         self.stim_dur = stim_dur   
-                                            
-        #load in and read webcam calibration files        
-        calib_data = self.read_cam_calibration_file(self.calib_loc)
+        
+        if not gui_cam_calib_data:
+            #load in and read webcam calibration files        
+            calib_data = self.read_cam_calibration_file(self.default_calib_loc)
+        else:
+            calib_data = gui_cam_calib_data
         self.calib_mtx = calib_data["camera_matrix"]
         self.calib_dist = calib_data["dist_coeff"]
         
-        print "Finished loading camera calibration data!"
+        print("Finished loading camera calibration data!")
         sys.stdout.flush()
         
-        if fps_cap is None:        
+        if fps_cap == None:        
             #Need to figure out what the effective fps of the camera is...
             #We'll use the python timeit module to achieve this
             fps_timer = timeit.Timer('[webcam.read() for x in range(30)]', 
@@ -283,7 +270,7 @@ class experiment(object):
         self.sample_frame = correct_distortion(self.sample_frame, self.calib_mtx, self.calib_dist)
         sample_cam.release()       
             
-        print "Finished collecting sample video frames!"
+        print("Finished collecting sample video frames!")
         sys.stdout.flush()
         
         #Need to figure out what the dimensions of the output frames will be
@@ -298,40 +285,36 @@ class experiment(object):
                      self.led_dur, self.stim_on_time, 
                      self.stim_dur, self.calib_mtx, self.calib_dist, 
                      self.write_video, self.frame_height, 
-                     self.frame_width, self.fps)                 
+                     self.frame_width, self.fps, self.default_save_dir)                 
         self.control_expt_process = mp.Process(target=control_expt, args=proc_args)                                    
         #start the control_expt process!
         self.control_expt_process.start()
         
-        print "Finished starting parallel experiment control process!"
+        print("Finished starting parallel experiment control process!")
         sys.stdout.flush()
+               
+        self.roi_list = roi_list
+        self.roi_dict = roi_dict
         
-        if set_rois is True:
-            self.roi_list = [('blue', 'line1'), ('red', 'line2'),
-                             ('blue', 'roi1'), ('red', 'roi2'), 
+        if roi_list == None or roi_dict == None:
+            self.roi_list = [('blue', 'roi1'), ('red', 'roi2'), 
                              ('green', 'roi3'), ('purple', 'roi4')]
             
             for roi_color, roi_name in self.roi_list:                
                 if 'roi' in roi_name:
-                    setattr(self, roi_name, ROI.set_roi(roi_color, background_img = self.sample_frame))
+                    setattr(self, roi_name, roi.set_roi(roi_color, background_img = self.sample_frame))
                 elif 'line' in roi_name:
-                    setattr(self, roi_name, ROI.set_line(roi_color, background_img = self.sample_frame, line_width=5, line_mode = line_mode))                  
-                self.wait_for_roi(getattr(self, roi_name))
+                    setattr(self, roi_name, roi.set_line(roi_color, background_img = self.sample_frame, line_width=5, line_mode = line_mode))                  
+                getattr(self, roi_name).wait_for_roi()
                  
             self.roi_dict = {roi_name:getattr(getattr(self, roi_name), 'roi') for roi_color, roi_name in self.roi_list}
-            self.save_rois()
             
             #normalize the roi_list to what you would encounter when loading
             self.roi_list = [element[1] for element in self.roi_list] 
             
-            print "Finished setting all ROIs!"
+            print("Finished setting all ROIs!")     
             sys.stdout.flush()
-            
-        else:
-            self.load_rois("FlyActivityCounter_ROIs.json")
-            print "Finished loading all ROIs!"
-            sys.stdout.flush()
-            
+          
     def read_cam_calibration_file(self, filepath):
         """
         Function to read in a camera calibration file which contains the 
@@ -349,45 +332,11 @@ class experiment(object):
                                   "dist_coeff": np.array(data["dist_coeff"])}                             
             return processed_data
         else:
-            print "Loading camera calibration failed! Check if the file exists at: {}".format(filepath)                                 
-        
-    def save_rois(self):     
-        data = {roi_name: [list(coord) for coord in self.roi_dict[roi_name]] for roi_color, roi_name in self.roi_list}                   
-        fname = "FlyActivityCounter_ROIs.json"   
-
-        if os.path.exists(fname):
-            os.remove(fname)
-        
-        #defaults to saving to same directory as where the script is located    
-        with open(fname, "w") as f:
-            json.dump(data, f)
-    
-    def load_rois(self, filepath):
-        if os.path.exists(filepath):
-            with open(filepath, 'r') as data_file:
-                data = json.load(data_file)            
-                #regenerate the roi names that exist in the data_file
-                self.roi_list = sorted([str(roi_key) for roi_key in data.keys()])            
-                #regenerate the roi dictionary that allows lookup of roi coordinates
-                self.roi_dict = {roi_name:tuple([np.array(element) for element in data[roi_name]]) for roi_name in self.roi_list}   
-        else:
-            print "Loading ROI failed! Check if the file exists at: {}".format(filepath)
-        
-    def wait_for_roi(self, roi_instance):
-        """
-        Function that allows script to wait for user to set ROI
-        """
-        while True:
-            plt.pause(0.000001)
-            if roi_instance.roi_finalized is True:
-                print "ROI is finalized"
-                sys.stdout.flush()
-                break
+            print("Loading camera calibration failed! Check if the file exists at: {}".format(filepath))
             
-    def get_activity_counts(self, (roi_name, bg_subtractor, current_frame, roi_coords)):
-        # Some kernels to do morphology operations with
-        kernel1 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
-        kernel2 = np.ones((3,3),np.uint8)   
+    def get_activity_counts(self, roi_name, bg_subtractor, current_frame, roi_coords):
+        #A kernel to do morphology operations with
+        kernel1 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))  
         #each position is in array([x,y]) format        
         start_pos, end_pos = roi_coords        
         #Image cropping works by img[y: y + h, x: x + w]
@@ -403,19 +352,22 @@ class experiment(object):
         cv2.drawContours(cropped_current_frame, contours, -1, (255,0,0), 2)    
         
         return((len(contours), cropped_current_frame)) 
+        
+    def shutdown_expt_manager(self):
+        self.parent_conn.send('Shutdown!')
     
     def start_expt(self):  
-        self.expt_timestring = time.strftime("%Y-%m-%d") + " " + time.strftime("%H.%M")
+        self.expt_timestring = time.strftime("%Y-%m-%d") + " " + time.strftime("%H.%M.%S")
         #create new directory for the data we are about to generate
-        self.save_dir = u'C:/Users/Nicholas/Desktop/fly-activity-assay/Data/{}'.format(self.expt_timestring)
-        if os.path.isdir(self.save_dir) is False:
+        self.save_dir = '{}'.format(os.path.abspath(os.path.join(self.default_save_dir,self.expt_timestring)))
+        if not os.path.isdir(self.save_dir):
             os.makedirs(self.save_dir)  
             
         self.parent_conn.send('Time:{}'.format(self.expt_timestring))
             
         self.parent_conn.send('Start!')
-        #give a second for the child process to get started
-        time.sleep(1)
+        #give a bit of time for the child process to get started
+        time.sleep(0.5)
         
         # Implement a K-Nearest Neighbors background subtraction
         # Most efficient when number of foreground pixels is low (and image area is small)
@@ -454,10 +406,20 @@ class experiment(object):
         plt.draw()
         #do an initial subplot background save
         backgs = [ax.figure.canvas.copy_from_bbox(ax.bbox) for ax in chain(*axes)]
-        lns = [ax.plot([],[])[0] for ax in chain(*axes)]        
+        lns = [ax.plot([],[])[0] for ax in chain(*axes)]  
         
-        while True:            
-            time_stamp, frame, stim_bool = self.data_q.get()            
+        msg = None
+       
+        while True:   
+            
+            if hasattr(self, 'expt_conn_obj'):
+                if self.expt_conn_obj.poll():
+                    msg = self.expt_conn_obj.recv() 
+                if msg == 'Shutdown!':
+                    self.shutdown_expt_manager()
+                    
+            time_stamp, frame, stim_bool = self.data_q.get()   
+            
             #check if the experiment data collection has completed
             if frame == 'stop':
                 #let's close everything down
@@ -475,14 +437,14 @@ class experiment(object):
                 #print (time_stamp, stim_bool)            
                 fps = 1/(time_stamp-prev_time_stamp)
                 prev_time_stamp = time_stamp           
-                print 'Lagged frames: {} fps: {}'.format(int(self.data_q.qsize()),fps)
+                print('Lagged frames: {} fps: {}'.format(int(self.data_q.qsize()),fps))
                 sys.stdout.flush()
                 
                 if int(self.data_q.qsize() > self.max_q_size):
                     self.max_q_size = self.data_q.qsize()
         
                 #order of result sublists should be ['line1', 'line2', 'roi1', 'roi2', 'roi3', 'roi4']   
-                results = [self.get_activity_counts((roi_name, self.bg_sub_dict[roi_name], frame, self.roi_dict[roi_name])) for roi_name in self.roi_list]                
+                results = [self.get_activity_counts(roi_name, self.bg_sub_dict[roi_name], frame, self.roi_dict[roi_name]) for roi_name in self.roi_list]                
                    
                 roi_counts, roi_frames = zip(*results)     
                                
@@ -535,16 +497,19 @@ class experiment(object):
               
                 update_plots(lns, backgs)
                 
-        #Okay we've finished analyzing all them data. Time to save it out.                
-        import csv
-        results_keys = sorted(self.results_dict.keys())
-        
-        for key in results_keys:        
-            with open("{}/{}-{}.csv".format(self.save_dir, self.expt_timestring, key), "wb") as outfile:
-                writer = csv.writer(outfile)
-                writer.writerow(["Time Elapsed (sec)", "Number of active flies", "Stimulation"])
-                writer.writerows(self.results_dict[key])                
-        print "CSVs written to data folder! Experiment is complete! Ready for the next one!"
+        #Okay we've finished analyzing all them data. Time to save it out.   
+        if self.write_csv:
+            import csv
+            results_keys = sorted(self.results_dict.keys())
+            
+            for key in results_keys:        
+                with open("{}/{}-{}.csv".format(self.save_dir, self.expt_timestring, key), "wb") as outfile:
+                    writer = csv.writer(outfile)
+                    writer.writerow(["Time Elapsed (sec)", "Number of active flies", "Stimulation"])
+                    writer.writerows(self.results_dict[key])                
+            print("CSVs written to data folder!")
+        else:
+            print("Experiment is complete! Ready for the next one!")
                 
 if __name__ == '__main__':     
     
@@ -571,11 +536,11 @@ if __name__ == '__main__':
 
     # example call where the following occurs:
     # experimental setup, 5 second delay, and then subsequent start of expt
-    expt = experiment(write_video=True, set_rois=True, use_arduino=True, 
-                      expt_dur = 300, led_freq = 120, led_dur=10, stim_on_time= 120, 
-                      stim_dur = 60, fps_cap=30)
+    expt = experiment(write_video=True, use_arduino=True, expt_dur = 60,
+                      led_freq = 5, led_dur=5, stim_on_time= 30, 
+                      stim_dur = 15, fps_cap=30, roi_list = None, roi_dict = None)
                                             
-    print "Setup complete! Ready to start the experiment!"
+    print("Setup complete! Ready to start the experiment!")
     sys.stdout.flush()
     #time.sleep(5)
     #expt.start_expt()
