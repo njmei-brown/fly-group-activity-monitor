@@ -1,8 +1,29 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Created on Wed Aug 05 23:08:12 2015
 
-@author: Nicholas Mei
+The MIT License (MIT)
+
+Copyright (C) 2015 Nicholas Mei <nicholas_mei@brown.edu>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 """
 
 import sys
@@ -30,7 +51,7 @@ import fly_activity_experiment_manager as fly_expt_man
 import roi
 
 #getting multiprocess to work with class methods is too much of a pain
-#so we define the preview_camera function outside of the class
+#so we define the run_expt and preview_camera function outside of the class
 #see: http://stackoverflow.com/questions/8804830/python-multiprocessing-pickling-error
 def run_expt(expt_conn, write_video, write_csv, use_arduino, expt_dur, 
              led_freq, led_dur, stim_on_time, stim_dur, fps_cap, roi_list, 

@@ -1,17 +1,31 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Created on Sat May 16 19:45:33 2015
 
-@author: Nicholas Mei (nicholas_mei@brown.edu)
+The MIT License (MIT)
 
-Overview:
+Copyright (C) 2015 Nicholas Mei <nicholas_mei@brown.edu>
 
-The Fly Activity Experiment Manager allows for quantitation of fly motion 
-(i.e. the number of flies moving in a given frame) during various experimental 
-paradigms. Importantly, this movement quantitation is done in real-time 
-(or near real-time).
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 """
+
 import os
 import sys
 import time
@@ -140,8 +154,9 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
                                   '-r', '{}'.format(fps_cap), # frames per second
                                   '-i', '-', # The imput comes from a pipe
                                   '-an', # Tells FFMPEG not to expect any audio
-                                  '-vcodec', 'libx264',
+                                  '-vcodec', 'libx264rgb',
                                   '-preset', 'fast',
+                                  '-crf', '11', #See: http://slhck.info/articles/crf for information about crf
                                   #'-qp', '0', #"-qp 0" specifies lossless output
                                   base_fname + "/{}.avi".format(fname)]
                                            
@@ -179,7 +194,7 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
             ret, raw_frame = cam.read()     
             frame = correct_distortion(raw_frame, calib_mtx, calib_dist)
             
-            if write_video is True:
+            if write_video:
                 video_writer.stdin.write(frame.tostring())
             
             # Use the multiprocessing Queue to send a timestamp, video frame,
