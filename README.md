@@ -1,11 +1,11 @@
-flyGrAM
+fly-group-activity-monitor (flyGrAM)
 ====================
 Set of functions and scripts to do real time fly activity quantitation with the added option to control optogenetic stimulation
 
 Overview:
 ---------
 
-The flyGrAM (Group Activity Monitor) allows for quantitation of fly motion 
+The flyGrAM allows for quantitation of fly motion 
 (i.e. the number of flies moving in a given frame) during various experimental 
 paradigms. Importantly, this movement quantitation is done in real-time 
 (or near real-time).
