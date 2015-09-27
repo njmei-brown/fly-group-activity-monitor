@@ -82,16 +82,16 @@ def plot_summarized_activity(bin_size=5, scaling_matrix = None):
             binned_data = []
             for indx2, datafile in enumerate(files_to_analyze):      
                 
-                scaling_factor = scaling_matrix[4*indx + indx2]                
-                
                 data = pd.read_csv(datafile)
                 
                 expt_dur = int(round(data['Time Elapsed (sec)'].max()))
                 stim_start_time = data['Time Elapsed (sec)'][data['Stimulation'] == True].iloc[0]
                 stim_end_time = data['Time Elapsed (sec)'][data['Stimulation'] == True].iloc[-1]   
                 
-                #scale data accordingly
-                data['Number of active flies'] = data['Number of active flies']/float(scaling_factor)
+                if scaling_matrix:
+                    #scale data accordingly
+                    scaling_factor = scaling_matrix[4*indx + indx2]    
+                    data['Number of active flies'] = data['Number of active flies']/float(scaling_factor)
     
                 #Group activity count data in bins of a specified duration (in seconds)
                 binned_activity = data.groupby(pd.cut(data['Time Elapsed (sec)'], bins=range(0, expt_dur, bin_size)))['Number of active flies']
