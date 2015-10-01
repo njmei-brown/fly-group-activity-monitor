@@ -63,25 +63,30 @@ def run_expt(expt_conn, write_video, write_csv, use_arduino, expt_dur,
                                    roi_dict, gui_cam_calib_data, default_save_dir)
     
     expt.start_expt()
+    
+def correct_distortion(raw_frame, calibration_data):
+    mtx = calibration_data["camera_matrix"]
+    dist = calibration_data["dist_coeff"]          
+    h,  w = raw_frame.shape[:2]           
+    #apply undistortion
+    newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx,dist,(w,h),1,(w,h))
+    unwarped = cv2.undistort(raw_frame, mtx, dist, None, newcameramtx)         
+    # crop the image
+    #x,y,w,h = roi
+    #unwarped = unwarped[y:y+h, x:x+w]    
+    return unwarped
 
 def preview_camera(calibration_data = None):   
     cam = cv2.VideoCapture(0)
     
     while True:
-        ret, frame = cam.read()
-        cv2.imshow('Camera preview: press "Esc" to close', frame)                    
-        if calibration_data:
-            mtx = calibration_data["camera_matrix"]
-            dist = calibration_data["dist_coeff"]          
-            h,  w = frame.shape[:2]           
-            #apply undistortion
-            newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx,dist,(w,h),1,(w,h))
-            unwarped = cv2.undistort(frame, mtx, dist, None, newcameramtx)         
-            # crop the image
-            x,y,w,h = roi
-            unwarped = unwarped[y:y+h, x:x+w]           
+        ret, frame = cam.read()                    
+        if calibration_data:            
+            unwarped = correct_distortion(frame, calibration_data)           
             #image comparisons
-            cv2.imshow('Calibrated camera preview: press "Esc" to close',unwarped)        
+            cv2.imshow('Calibrated camera preview: press "Esc" to close',unwarped) 
+        else:
+            cv2.imshow('Camera preview: press "Esc" to close', frame)
         key = cv2.waitKey(30) & 0xff
         if key == 27:
             break          
@@ -366,6 +371,9 @@ class Application(tk.Frame):
             print("You cancelled performing the camera calibration")
             
     def handle_preview_camera(self, calibration_data = None):
+        if calibration_data == None:
+            if hasattr(self, 'calibration_data'):
+                calibration_data = self.calibration_data
         cam_preview_proc = mp.Process(target=preview_camera, args=(calibration_data,))   
         cam_preview_proc.start()
         
@@ -399,6 +407,9 @@ class Application(tk.Frame):
                     ('green', 'roi3'), ('purple', 'roi4')]
                     
         preview_img = self.get_preview_img()
+        
+        if hasattr(self, 'calibration_data'):
+            preview_img = correct_distortion(preview_img, self.calibration_data)
                     
         for roi_color, roi_name in roi_list:
             setattr(self, roi_name, roi.set_roi(roi_color, preview_img))
