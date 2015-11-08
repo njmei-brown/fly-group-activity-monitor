@@ -80,16 +80,20 @@ def preview_camera(calibration_data = None):
     cam = cv2.VideoCapture(0)
     
     while True:
-        ret, frame = cam.read()                    
-        if calibration_data:            
-            unwarped = correct_distortion(frame, calibration_data)           
-            #image comparisons
-            cv2.imshow('Calibrated camera preview: press "Esc" to close',unwarped) 
+        ret, frame = cam.read()
+        if ret:                    
+            if calibration_data:            
+                unwarped = correct_distortion(frame, calibration_data)           
+                #image comparisons
+                cv2.imshow('Calibrated camera preview: press "Esc" to close',unwarped) 
+            else:
+                cv2.imshow('Camera preview: press "Esc" to close', frame)
+            key = cv2.waitKey(30) & 0xff
+            if key == 27:
+                break
         else:
-            cv2.imshow('Camera preview: press "Esc" to close', frame)
-        key = cv2.waitKey(30) & 0xff
-        if key == 27:
-            break          
+            print("Could not find a valid camera! Try checking camera!")
+            break
     cam.release()
     cv2.destroyAllWindows()
     
@@ -463,6 +467,7 @@ class Application(tk.Frame):
         time.sleep(1)
         self.expt_conn.close()
         self.gui_conn.close()
+        self.expt_proc.terminate()
     
     #================= GUI widgets ========================
     def create_widgets(self):

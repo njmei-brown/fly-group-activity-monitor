@@ -424,16 +424,27 @@ class experiment(object):
         lns = [ax.plot([],[])[0] for ax in chain(*axes)]  
         
         msg = None
+        
+        #Python "dot" loop optimization:
+        expt_conn_obj_poll = self.expt_conn_obj.poll
+        expt_conn_obj_recv = self.expt_conn_obj.recv
+        data_q_get = self.data_q.get
+        np_ndarray = np.ndarray
+        data_q_qsize = self.data_q.qsize
+        sys_stdout_flush = sys.stdout.flush
+        get_activity_counts = self.get_activity_counts
+        bg_sub_dict = self.bg_sub_dict
+        roi_dict  = self.roi_dict
+        roi_list = self.roi_list        
        
-        while True:   
-            
+        while True:           
             if hasattr(self, 'expt_conn_obj'):
-                if self.expt_conn_obj.poll():
-                    msg = self.expt_conn_obj.recv() 
+                if expt_conn_obj_poll():
+                    msg = expt_conn_obj_recv() 
                 if msg == 'Shutdown!':
                     self.shutdown_expt_manager()
                     
-            time_stamp, frame, stim_bool = self.data_q.get()   
+            time_stamp, frame, stim_bool = data_q_get()   
             
             #check if the experiment data collection has completed
             if frame == 'stop':
@@ -447,23 +458,23 @@ class experiment(object):
                 self.control_expt_process.terminate()
                 break
             
-            elif type(frame) is np.ndarray:                
+            elif type(frame) is np_ndarray:                
                 #print frame.dtype, frame.size
                 #print (time_stamp, stim_bool)            
                 fps = 1/(time_stamp-prev_time_stamp)
                 prev_time_stamp = time_stamp           
-                print('Lagged frames: {} fps: {}'.format(int(self.data_q.qsize()),fps))
-                sys.stdout.flush()
+                print('Lagged frames: {} fps: {}'.format(int(data_q_qsize()),fps))
+                sys_stdout_flush()
                 
-                if int(self.data_q.qsize() > self.max_q_size):
-                    self.max_q_size = self.data_q.qsize()
+                if int(data_q_qsize() > self.max_q_size):
+                    self.max_q_size = data_q_qsize()
         
                 #order of result sublists should be ['line1', 'line2', 'roi1', 'roi2', 'roi3', 'roi4']   
-                results = [self.get_activity_counts(roi_name, self.bg_sub_dict[roi_name], frame, self.roi_dict[roi_name]) for roi_name in self.roi_list]                
+                results = [get_activity_counts(roi_name, bg_sub_dict[roi_name], frame, roi_dict[roi_name]) for roi_name in roi_list]                
                    
                 roi_counts, roi_frames = zip(*results)     
                                
-                for roi_indx, roi_name in enumerate(self.roi_list):
+                for roi_indx, roi_name in enumerate(roi_list):
                     #append roi_counts to the results dictionary
                     self.results_dict[roi_name].append([time_stamp, roi_counts[roi_indx], stim_bool])
                     #append roi_counts to the plotting deque
@@ -471,7 +482,7 @@ class experiment(object):
                 
                 #Show video with active flies highlighted
                 for indx, proc_frame in enumerate(roi_frames):                
-                    cv2.imshow('{}'.format(self.roi_list[indx]), proc_frame) 
+                    cv2.imshow('{}'.format(roi_list[indx]), proc_frame) 
                 cv2.waitKey(5)
                 
                 def counted(f):
