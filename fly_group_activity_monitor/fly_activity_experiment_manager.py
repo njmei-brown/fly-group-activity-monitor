@@ -105,7 +105,7 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
         #Initialize the arduino!
         #Doing it this way prevents the serial reset that occurs!
         arduino = serial.Serial()
-        arduino.port = 'COM7'
+        arduino.port = 'COM3'
         arduino.baudrate = 115200
         arduino.timeout = 0.05
         arduino.setDTR(False)
@@ -124,13 +124,15 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
         def turn_on_stim(led_freq, led_dur):
             arduino.write('{freq},{dur}'.format(freq=led_freq, dur=led_dur))
             arduino_state = arduino.readline()
-            if str(arduino_state) == 'ON':
+            state = np.fromstring(arduino_state, dtype=float, sep=',')
+            if state[0] != 0.00 and state[1] != 0.00:
                 arduino.is_on = True
         
         def turn_off_stim():
             arduino.write('0,0')
             arduino_state = arduino.readline()
-            if str(arduino_state) == 'OFF':
+            state = np.fromstring(arduino_state, dtype=float, sep=',')
+            if state[0] == 0.00 and state[1] == 0.00:
                 arduino.is_on = False
     
     #Wait for the start signal from the parent process to begin grabbing frames
@@ -156,7 +158,7 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
                                   '-an', # Tells FFMPEG not to expect any audio
                                   '-vcodec', 'libx264rgb',
                                   '-preset', 'fast',
-                                  '-crf', '11', #See: http://slhck.info/articles/crf for information about crf
+                                  '-crf', '15', #See: http://slhck.info/articles/crf for information about crf
                                   #'-qp', '0', #"-qp 0" specifies lossless output
                                   base_fname + "/{}.avi".format(fname)]
                                            
@@ -372,7 +374,10 @@ class experiment(object):
         self.parent_conn.send('Shutdown!')
     
     def start_expt(self):  
-        self.expt_timestring = time.strftime("%Y-%m-%d") + " " + time.strftime("%H.%M.%S")
+        if self.use_arduino:
+            self.expt_timestring = time.strftime("%Y-%m-%d") + " " + time.strftime("%H.%M.%S") + " " + '- {} Hz {} Pulse width'.format(self.led_freq, self.led_dur)
+        else:
+            self.expt_timestring = time.strftime("%Y-%m-%d") + " " + time.strftime("%H.%M.%S")
         #create new directory for the data we are about to generate
         self.save_dir = '{}'.format(os.path.abspath(os.path.join(self.default_save_dir,self.expt_timestring)))
         if not os.path.isdir(self.save_dir):
@@ -382,7 +387,7 @@ class experiment(object):
             
         self.parent_conn.send('Start!')
         #give a bit of time for the child process to get started
-        time.sleep(0.5)
+        time.sleep(0.1)
         
         # Implement a K-Nearest Neighbors background subtraction
         # Most efficient when number of foreground pixels is low (and image area is small)

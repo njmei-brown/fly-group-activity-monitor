@@ -42,7 +42,7 @@ if sys.version_info[0] < 3:
     import tkMessageBox as messagebox
       
 #If we are using python 3.0 or above
-elif sys.version_info[0] > 3:
+elif sys.version_info[0] >= 3:
     import tkinter as tk
     import tkinter.filedialog as filedialog
     import tkinter.messagebox as messagebox
