@@ -55,7 +55,7 @@ elif sys.version_info[0] > 3:
 #datafile = u'C:/Users/Nicholas/Desktop/fly-activity-assay/Analysis/5 Hz 10 Pulse width/2015-06-08 18.38/2015-06-08 18.38-roi1.csv'
 
       
-def plot_summarized_activity(bin_size=5, scaling_matrix = None):
+def plot_summarized_activity(bin_size=10, scaling_matrix = None):
     """
     plotting function that allows user to select an experiment condition folder
     (containing individual experiment results folders). Function bins activity data
@@ -76,7 +76,6 @@ def plot_summarized_activity(bin_size=5, scaling_matrix = None):
         
         for indx, roi in enumerate(rois_to_analyze):
             files_to_analyze = glob.glob('{basedir}/*/*-{roi_name}.csv'.format(basedir = base_directory, roi_name = roi))
-            #print files_to_analyze
             #print len(files_to_analyze)
             
             binned_data = []
@@ -91,7 +90,7 @@ def plot_summarized_activity(bin_size=5, scaling_matrix = None):
                 if scaling_matrix:
                     #scale data accordingly
                     scaling_factor = scaling_matrix[4*indx + indx2]    
-                    data['Number of active flies'] = data['Number of active flies']/float(scaling_factor)
+                    data['Number of active flies'] = data['Number of active flies'].div(float(scaling_factor))
     
                 #Group activity count data in bins of a specified duration (in seconds)
                 binned_activity = data.groupby(pd.cut(data['Time Elapsed (sec)'], bins=range(0, expt_dur, bin_size)))['Number of active flies']
@@ -106,9 +105,9 @@ def plot_summarized_activity(bin_size=5, scaling_matrix = None):
             #Plotting stuff
             currax = axarr.flat[indx]              
             currax.set_title('Binned activity for roi {}'.format(roi.lstrip('roi')), fontsize=14)
-            means.plot(ax=currax, yerr = errors, marker='o')
+            means.plot(ax=currax, marker='o')           
             currax.set_xlabel('Time elapsed in {} second bins'.format(bin_size))
-            currax.set_ylabel('Normalized mean number of active flies')
+            currax.set_ylabel('Number of active flies')
             currax.spines['right'].set_visible(False)
             currax.spines['top'].set_visible(False) 
             currax.tick_params(top="off",right="off")
