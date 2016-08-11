@@ -153,7 +153,7 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
                                   '-f', 'rawvideo',
                                   '-pix_fmt', 'bgr24',
                                   '-s', '{}x{}'.format(frame_width,frame_height), # size of one frame
-                                  '-r', '{}'.format(fps_cap), # frames per second
+                                  #'-r', '{}'.format(fps_cap), # frames per second
                                   '-i', '-', # The imput comes from a pipe
                                   '-an', # Tells FFMPEG not to expect any audio
                                   '-vcodec', 'libx264rgb',
