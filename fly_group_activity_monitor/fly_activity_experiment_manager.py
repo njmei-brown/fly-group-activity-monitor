@@ -105,7 +105,7 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
         #Initialize the arduino!
         #Doing it this way prevents the serial reset that occurs!
         arduino = serial.Serial()
-        arduino.port = 'COM3'
+        arduino.port = 'COM4'
         arduino.baudrate = 115200
         arduino.timeout = 0.05
         arduino.setDTR(False)
@@ -134,7 +134,7 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
             state = np.fromstring(arduino_state, dtype=float, sep=',')
             if state[0] == 0.00 and state[1] == 0.00:
                 arduino.is_on = False
-    
+                    
     #Wait for the start signal from the parent process to begin grabbing frames
     while True:
         #This will block until it receives the message it was waiting for
@@ -153,7 +153,7 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
                                   '-f', 'rawvideo',
                                   '-pix_fmt', 'bgr24',
                                   '-s', '{}x{}'.format(frame_width,frame_height), # size of one frame
-                                  #'-r', '{}'.format(fps_cap), # frames per second
+                                  '-r', '{}'.format(fps_cap), # frames per second
                                   '-i', '-', # The imput comes from a pipe
                                   '-an', # Tells FFMPEG not to expect any audio
                                   '-vcodec', 'libx264rgb',
@@ -163,18 +163,17 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
                                   base_fname + "/{}.avi".format(fname)]
                                            
                 #Note to self, don't try to redirect stout or sterr to sp.PIPE as filling the pipe up will cause subprocess to hang really bad :(
-                video_writer = sp.Popen(ffmpeg_command, stdin=sp.PIPE)   
+                video_writer = sp.Popen(ffmpeg_command, stdin=sp.PIPE)  
                 
         if msg == 'Start!':
             break 
         
-    #initilize the video capture object
-    cam  = cv2.VideoCapture(cv2.CAP_DSHOW + 0) 
+    cam = cv2.VideoCapture(0)
     #We don't want the camera to try to autogain as it messes up the image
     #So start acquiring some frames to avoid the autogain frames
     for x in range(30):
-        ret, temp = cam.read()        
-        
+        ret, temp = cam.read()    
+    
     #start the clock!!
     expt_start_time = time.clock() 
     fps_cap_timer = time.clock()
@@ -384,7 +383,7 @@ class experiment(object):
             os.makedirs(self.save_dir)  
             
         self.parent_conn.send('Time:{}'.format(self.expt_timestring))
-            
+        time.sleep(0.1)
         self.parent_conn.send('Start!')
         #give a bit of time for the child process to get started
         time.sleep(0.1)

@@ -17,18 +17,19 @@ import pandas as pd
 import glob
 import math
 
-import tkMessageBox
-import tkSimpleDialog
-
 #If we are using python 2.7 or under
 if sys.version_info[0] < 3:
     import Tkinter as tk
     import tkFileDialog as filedialog
+    import tkMessageBox
+    import tkSimpleDialog
       
 #If we are using python 3.0 or above
-elif sys.version_info[0] > 3:
+elif sys.version_info[0] >= 3:
     import tkinter as tk
     import tkinter.filedialog as filedialog
+    from tkinter import messagebox as tkMessageBox
+    from tkinter import simpledialog as tkSimpleDialog
 
 def chooseDir(cust_text):
     root = tk.Tk()
@@ -73,7 +74,8 @@ raw_data_path = "C:\Users\Whirlwind\Desktop\Reza's foldr for Nick 2"
 expt_key_path = "C:\\Users\\Whirlwind\Desktop\\Reza's foldr for Nick 2\\5-120-2.5uL-19mM.csv"
 #%%
 
-def load_flygram_experiments(bin_size = 10, raw_data_path = raw_data_path, expt_key_path = expt_key_path, preview=False):
+def load_flygram_experiments(bin_size = 10, raw_data_path = None, 
+                             expt_key_path = None, preview=False):
     
     if raw_data_path and expt_key_path:      
         #Load experiment key file
@@ -87,7 +89,7 @@ def load_flygram_experiments(bin_size = 10, raw_data_path = raw_data_path, expt_
         try:
             sorted_treatments = sorted(treatments, key = lambda value: int(value.split(":")[0]))
         except:
-            print("Could not sort by 'Air:Ethanol' flow rate, trying alternative sorting")
+            print("\nNote: Could not sort by 'Air:Ethanol' flow rate.\nTrying alternative sorting.")
             pass
         
         sorted_treatments = sorted(treatments)
@@ -99,12 +101,18 @@ def load_flygram_experiments(bin_size = 10, raw_data_path = raw_data_path, expt_
             
             binned_data = []
             for df_tuple in expt_details.itertuples():
-                expt_datetime = df_tuple[1]
+                datetime = df_tuple[1]
                 roi = df_tuple[2]
                 num_flies = df_tuple[3]
-                path = [path for path in files_to_analyze if (expt_datetime in path) and ('roi{}'.format(roi) in path)]
+                path = [path for path in files_to_analyze if (datetime in path) and ('roi{}'.format(roi) in path)]
             
-                data = pd.read_csv(path[0])
+                try:
+                    data = pd.read_csv(path[0])
+                except IndexError:
+                    print("\n##################################################\n")
+                    print("Error reading in roi .csv!\nCould not find [roi {}] with base name of:\n{}".format(roi, datetime))
+                    print("\n##################################################\n")                    
+                    raise
                         
                 expt_dur = int(round(data['Time Elapsed (sec)'].max()))
                 stim_start_time = data['Time Elapsed (sec)'][data['Stimulation'] == True].iloc[0]
@@ -185,7 +193,7 @@ def plot_flygram_experiments(tk_root, bin_size, raw_data_path, key_path, save_lo
         errors = results[treatment][1].values*100
         
         #parse strings of x-axis binned intervals
-        x_axis_values = list(results[results.keys()[0]][0].index.values)
+        x_axis_values = list(results[list(results.keys())[0]][0].index.values)
         #convert interval strings into a numerical value of x_axis_values
         x_axis_values = [int(value.lstrip('(').split(',')[1].rstrip(']')) for value in x_axis_values]
         
