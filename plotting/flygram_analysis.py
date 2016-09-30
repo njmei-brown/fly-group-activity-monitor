@@ -62,20 +62,12 @@ def chooseFile(cust_text, default_dir=None):
         
 class ResultsDict(dict):
     pass
-#datafile
-#datafile = u'C:/Users/Nicholas/Desktop/fly-activity-assay/Analysis/5 Hz 10 Pulse width/2015-06-08 18.38/2015-06-08 18.38-roi1.csv'
 
-#raw_data_path = "C:\Users\Whirlwind\Desktop\Reza's folder for Nick"
-#key_path = "C:\Users\Whirlwind\Desktop\Reza's folder for Nick\WtB 5-120 25deg 3-3-16 test.csv"
-
-
-raw_data_path = "C:\Users\Whirlwind\Desktop\Reza's foldr for Nick 2"
-
-expt_key_path = "C:\\Users\\Whirlwind\Desktop\\Reza's foldr for Nick 2\\5-120-2.5uL-19mM.csv"
 #%%
 
 def load_flygram_experiments(bin_size = 10, raw_data_path = None, 
-                             expt_key_path = None, preview=False):
+                             expt_key_path = None, preview=False, 
+                             norm_to_bl = False, bl_window = 30):
     
     if raw_data_path and expt_key_path:      
         #Load experiment key file
@@ -121,6 +113,12 @@ def load_flygram_experiments(bin_size = 10, raw_data_path = None,
                 #normalize data based on the number of flies in each ROI (experimentor must supply this information!)
                 data['Number of active flies'] = data['Number of active flies'].div(float(num_flies))
                 
+                if norm_to_bl:
+                    baseline_window = data[data['Time Elapsed (sec)'] <= bl_window]['Number of active flies']
+                    baseline_avg = baseline_window.mean()
+                    
+                    data['Number of active flies'] = data['Number of active flies'].div(baseline_avg)                    
+                    
                 #Group activity count data in bins of a specified duration (in seconds)
                 binned_activity = data.groupby(pd.cut(data['Time Elapsed (sec)'], bins=range(0, expt_dur, bin_size)))['Number of active flies']
                                                
@@ -159,11 +157,11 @@ def load_flygram_experiments(bin_size = 10, raw_data_path = None,
         return raw_results_dict, results_dict
         
 #%%        
-def plot_flygram_experiments(tk_root, bin_size, raw_data_path, key_path, save_loc):
+def plot_flygram_experiments(tk_root, bin_size, raw_data_path, key_path, save_loc, norm_to_bl = False, bl_window = 30):
     raw_results, results = load_flygram_experiments(bin_size = bin_size, 
                                          raw_data_path = raw_data_path, 
                                          expt_key_path = key_path, 
-                                         preview=False)
+                                         preview=False, norm_to_bl=norm_to_bl, bl_window = bl_window)
     
     stim_start_time = results.stim_start_time
     stim_end_time = results.stim_end_time
@@ -189,13 +187,23 @@ def plot_flygram_experiments(tk_root, bin_size, raw_data_path, key_path, save_lo
     legend_objects = []
     
     for indx, treatment in enumerate(sorted_treatments): 
-        means = results[treatment][0].values*100
-        errors = results[treatment][1].values*100
+        if norm_to_bl:
+            means = results[treatment][0].values
+            errors = results[treatment][1].values
+        else:
+            means = results[treatment][0].values*100
+            errors = results[treatment][1].values*100
         
         #parse strings of x-axis binned intervals
         x_axis_values = list(results[list(results.keys())[0]][0].index.values)
         #convert interval strings into a numerical value of x_axis_values
         x_axis_values = [int(value.lstrip('(').split(',')[1].rstrip(']')) for value in x_axis_values]
+        
+        #original
+        orig_x_axis_values = x_axis_values        
+        
+        #solution to stimulation axvspan not 'matching up' with datapoints
+        x_axis_values = np.array(x_axis_values) - bin_size/2.0
         
         line, = ax.plot(x_axis_values, means, marker='o', color=color_palette[indx], mec=color_palette[indx], markersize=3.00)   
         patch = mpatches.Patch(color=color_palette[indx], alpha=0.4, linewidth=0)
@@ -203,21 +211,27 @@ def plot_flygram_experiments(tk_root, bin_size, raw_data_path, key_path, save_lo
                         color=color_palette[indx], alpha=0.4)                       
         legend_objects.append((line, patch))
     
-    #print(x_axis_values)
-    ax.set_ylim([0,90])
-    #print(x_axis_values[-1]+bin_size)
-    ax.set_xlim([0,x_axis_values[-1]+2*bin_size])
-    
-    x_ticks = np.linspace(0, x_axis_values[-1]+bin_size, 5, dtype=int)  
+    if norm_to_bl:
+        ax.set_ylim([0,5])
+    else:
+        #print(x_axis_values)
+        ax.set_ylim([0,90])
+
+    ax.set_xlim([0,orig_x_axis_values[-1]+2*bin_size])    
+    x_ticks = np.linspace(0, orig_x_axis_values[-1]+bin_size, 10, dtype=int)  
+
     ax.set_xticks(x_ticks)
     ax.set_xlabel('Time Elapsed (sec)', fontsize = 16)
-    ax.set_ylabel('Percent Activity', fontsize = 16)
+    if norm_to_bl:
+        ax.set_ylabel('Activity Normalized to Baseline', fontsize=16)
+    else:
+        ax.set_ylabel('Percent Activity', fontsize = 16)
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False) 
     ax.tick_params(axis='both', which='both', top='off', right='off', left='off', bottom='off')
     ax.grid(False)
     
-    ax.axvspan(int(math.floor(stim_start_time)), int(math.floor(stim_end_time)), facecolor='#8D8B90', alpha=0.10, edgecolor = 'none',) 
+    ax.axvspan(int(math.floor(stim_start_time)), int(math.floor(stim_end_time)), facecolor='#8D8B90', alpha=0.30, edgecolor = 'none',) 
     
     label_pos = (stim_start_time+stim_end_time - 2*bin_size)/2
     
@@ -293,5 +307,6 @@ if __name__ == '__main__':
            
     plot_flygram_experiments(tk_root=root, bin_size=bin_size, 
                              raw_data_path=raw_data_path, 
-                             key_path=key_path, save_loc=save_loc)
+                             key_path=key_path, save_loc=save_loc, 
+                             norm_to_bl=False,bl_window=120)
     root.destroy()
