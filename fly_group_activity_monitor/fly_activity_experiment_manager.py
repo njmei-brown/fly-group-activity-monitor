@@ -33,6 +33,7 @@ import json
 import timeit
 import serial
 
+import serial.tools.list_ports as lp
 import numpy as np
 import matplotlib.pyplot as plt
 import multiprocessing as mp
@@ -65,6 +66,19 @@ def correct_distortion(input_frame, calib_mtx, calib_dist):
     newcameramtx, region = cv2.getOptimalNewCameraMatrix(calib_mtx,calib_dist,(w,h),1,(w,h))
     corrected_frame = cv2.undistort(input_frame, calib_mtx, calib_dist, None, newcameramtx)         
     return corrected_frame
+    
+def find_arduino():
+    """
+    Function that scans serial ports to look for Arduino
+    Returns as a string the name of the first port with an Arduino connected
+    If an arduino is not found, return "None"
+    """    
+    ports = list(lp.comports())
+    
+    for p in ports:
+        if "Arduino" in p[1]:
+            return p[0]
+    return None
 
 def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, led_dur, 
                  stim_on_time, stim_dur, calib_mtx, calib_dist,
@@ -102,11 +116,14 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
         return time.clock()-start_time  
     
     if use_arduino:
+        arduino_port = find_arduino()
+        if not arduino_port:
+            raise ValueError('Could not find an Arduino to connect to! Please check that an Arduino is connected!')
         #Initialize the arduino!
         #Doing it this way prevents the serial reset that occurs!
         arduino = serial.Serial()
-        arduino.port = 'COM4'
-        arduino.baudrate = 115200
+        arduino.port = arduino_port
+        arduino.baudrate = 250000
         arduino.timeout = 0.05
         arduino.setDTR(False)
         arduino.open()  
@@ -192,8 +209,11 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
         #enforce an FPS cap such that camera read speed cannot be faster than the cap
         if elapsed_time(fps_cap_timer) >= 1/float(fps_cap):   
             fps_cap_timer = time.clock()            
-            ret, raw_frame = cam.read()     
-            frame = correct_distortion(raw_frame, calib_mtx, calib_dist)
+            ret, raw_frame = cam.read()  
+            if calib_mtx.any():
+                frame = correct_distortion(raw_frame, calib_mtx, calib_dist)
+            else:
+                frame = raw_frame
             
             if write_video:
                 video_writer.stdin.write(frame.tostring())
@@ -234,12 +254,14 @@ class experiment(object):
                  use_arduino=False, expt_dur = 60, led_freq = 5, led_dur=5, 
                  stim_on_time=60, stim_dur = 60, fps_cap = None, 
                  roi_list = None, roi_dict = None, gui_cam_calib_data = None, 
-                 default_save_dir = u'C:/Users/Nicholas/Desktop/fly-activity-assay/Data/',
+                 default_save_dir = None,
                  line_mode ='vertical'):
                 
+        #Experiment_connection_object is a connection from the flyGrAM GUI 
+        #It is used to send a "stop experiment now" signal if the user clicks the emergency stop
         if expt_conn_obj:
-            self.expt_conn_obj = expt_conn_obj          
-                
+            self.expt_conn_obj = expt_conn_obj
+        
         self.write_csv = write_csv
         self.write_video = write_video
         self.use_arduino = use_arduino
@@ -253,15 +275,20 @@ class experiment(object):
         self.stim_on_time = stim_on_time
         self.stim_dur = stim_dur   
         
-        if not gui_cam_calib_data:
+        if gui_cam_calib_data:
+            calib_data = gui_cam_calib_data
+        else:
             #load in and read webcam calibration files        
             calib_data = self.read_cam_calibration_file(self.default_calib_loc)
-        else:
-            calib_data = gui_cam_calib_data
-        self.calib_mtx = calib_data["camera_matrix"]
-        self.calib_dist = calib_data["dist_coeff"]
         
-        print("Finished loading camera calibration data!")
+        if calib_data:
+            self.calib_mtx = calib_data["camera_matrix"]
+            self.calib_dist = calib_data["dist_coeff"]
+            print("Finished loading camera calibration data!")
+        else:
+            self.calib_mtx = None
+            self.calib_dist = None
+
         sys.stdout.flush()
         
         if fps_cap == None:        
@@ -283,7 +310,9 @@ class experiment(object):
         for x in range(60):
             sample_frames.append(sample_cam.read())           
         _, self.sample_frame = sample_frames[-1]
-        self.sample_frame = correct_distortion(self.sample_frame, self.calib_mtx, self.calib_dist)
+
+        if calib_data:
+            self.sample_frame = correct_distortion(self.sample_frame, self.calib_mtx, self.calib_dist)
         sample_cam.release()       
             
         print("Finished collecting sample video frames!")
@@ -383,10 +412,10 @@ class experiment(object):
             os.makedirs(self.save_dir)  
             
         self.parent_conn.send('Time:{}'.format(self.expt_timestring))
-        time.sleep(0.1)
+        time.sleep(0.5)
         self.parent_conn.send('Start!')
         #give a bit of time for the child process to get started
-        time.sleep(0.1)
+        time.sleep(0.25)
         
         # Implement a K-Nearest Neighbors background subtraction
         # Most efficient when number of foreground pixels is low (and image area is small)
@@ -430,8 +459,9 @@ class experiment(object):
         msg = None
         
         #Python "dot" loop optimization:
-        expt_conn_obj_poll = self.expt_conn_obj.poll
-        expt_conn_obj_recv = self.expt_conn_obj.recv
+        if hasattr(self, 'expt_conn_obj'):
+            expt_conn_obj_poll = self.expt_conn_obj.poll
+            expt_conn_obj_recv = self.expt_conn_obj.recv
         data_q_get = self.data_q.get
         np_ndarray = np.ndarray
         data_q_qsize = self.data_q.qsize
@@ -568,7 +598,8 @@ if __name__ == '__main__':
     # experimental setup, 5 second delay, and then subsequent start of expt
     expt = experiment(write_video=True, use_arduino=True, expt_dur = 60,
                       led_freq = 5, led_dur=5, stim_on_time= 30, 
-                      stim_dur = 15, fps_cap=30, roi_list = None, roi_dict = None)
+                      stim_dur = 15, fps_cap=30, roi_list = None, roi_dict = None,
+                      default_save_dir = u'C:/Users/Nicholas/Desktop/')
                                             
     print("Setup complete! Ready to start the experiment!")
     sys.stdout.flush()

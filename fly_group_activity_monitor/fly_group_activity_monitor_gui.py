@@ -97,7 +97,7 @@ def preview_camera(calibration_data = None):
     cam.release()
     cv2.destroyAllWindows()
     
-def calibrate_camera(perform_save, num_samples = 100):
+def calibrate_camera(perform_save, num_samples = 200):
     """
     This function does live collection of chessboard calibration points and takes
     a specified number of calibration samples. It calculates the appropriate transformation
@@ -225,13 +225,13 @@ class Application(tk.Frame):
         self.write_csv = tk.IntVar()
         self.fps_cap = tk.StringVar()
     
-        self.expt_dur.set("300")
+        self.expt_dur.set("360")
         self.stim_on_time.set("120")
-        self.stim_dur.set("60")
+        self.stim_dur.set("120")
         
         self.use_arduino.set("1")
-        self.led_freq.set("5")
-        self.led_dur.set("5")
+        self.led_freq.set("0.5")
+        self.led_dur.set("1000")
         
         self.write_vid.set("1")
         self.write_csv.set("1")
@@ -358,7 +358,7 @@ class Application(tk.Frame):
                              "enough points for calibration have been collected. "
                              "\n\nThen, please be extremely patient as calculating " 
                              "the undistortion matrix can take a while " 
-                             "(up to 10 minutes or more if you have a slow computer)"
+                             "(up to 20 minutes or more if you have a slow computer)"
                              "\n\nAlso, please don't interact with the main GUI while "
                              "performing the calibration, if you do, things will break :(")
                               
@@ -690,4 +690,5 @@ if __name__ == '__main__':
     root = tk.Tk()
     root.title("Fly Activity Assay - User Interface")
     app = Application(master=root)
+    app.focus_force()
     app.mainloop()

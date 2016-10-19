@@ -50,22 +50,28 @@ class set_roi(object):
         self.released = True
         if self.roi_finalized is False:
             self.end_pos = np.array([event.xdata, event.ydata]) 
-            self.diff = (self.end_pos - self.start_pos)
-            self.rect.set_width(self.diff[0])
-            self.rect.set_height(self.diff[1])
-            self.rect.set_xy(self.start_pos)
-            self.ax.figure.canvas.draw()
+            try:
+                self.diff = (self.end_pos - self.start_pos)
+                self.rect.set_width(self.diff[0])
+                self.rect.set_height(self.diff[1])
+                self.rect.set_xy(self.start_pos)
+                self.ax.figure.canvas.draw()
+            except:
+                print("The mouse cursor went out of the canvas area! Please retry drawing the ROI!")
                   
     def on_mouse_motion(self, event):
         if self.roi_finalized is False:
             if self.released is False:
                 self.current_pos = np.array([event.xdata, event.ydata])
-                self.diff = (self.current_pos - self.start_pos)
-                self.rect.set_width(self.diff[0])
-                self.rect.set_height(self.diff[1])
-                self.rect.set_xy(self.start_pos)
-                self.ax.figure.canvas.draw()
-                
+                try:
+                    self.diff = (self.current_pos - self.start_pos)
+                    self.rect.set_width(self.diff[0])
+                    self.rect.set_height(self.diff[1])
+                    self.rect.set_xy(self.start_pos)
+                    self.ax.figure.canvas.draw()
+                except:
+                    print("The mouse cursor went out of the canvas area! Please retry drawing the ROI!")
+                    
     def standardize_coords(self):
         """
         This function take the start and end coordinates selected by the user

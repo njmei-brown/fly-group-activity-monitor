@@ -58,7 +58,7 @@ void setup() {
   pinAsOutput(SOL_PIN_2);
   pinAsOutput(SOL_PIN_3);
   pinAsOutput(SOL_PIN_4);
-  //Start serial comms and set baud rate to 115200
+  //Start serial comms and set baud rate to 250000
   Serial.begin(250000);  
   //We also don't want the arduino waiting for too long on serial reads before timing out
   //Wait 2 milleseconds before timing out
