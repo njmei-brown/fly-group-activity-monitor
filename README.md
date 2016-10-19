@@ -41,6 +41,11 @@ and all components of the experimental setup to work properly.
 
 2. Arduino's need to be loaded with the 'Opto-blink and Solenoids' sketch
 
+Detailed install instructions (only Windows OS for now...):
+-----------------------------------------------------------
+
+[Click Here!](https://github.com/njmei/fly-group-activity-monitor/wiki/flyGrAM-Detailed-Installation-Guide-for-Windows-OS)
+
 Required Computer hardware:
 ---------------------------
 
