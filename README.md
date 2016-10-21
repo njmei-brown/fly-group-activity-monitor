@@ -20,18 +20,18 @@ and pulse width of LED diodes for optogenetic experiments.
 collected video during an experiment to '.avi' format for subsequent analysis 
 with other more sophisticated tracking software packages (i.e. C-Trax, Jabba, etc...).
 
-3. Can produce real time activity plots for 4 differents ROIs.
+3. Can produce real time activity plots for 4 differents regions of interest (ROI).
 
 Required software:
 ------------------
 
-1. Python 2.7+ (Anaconda distribution is highly highly recommended: https://store.continuum.io/cshop/anaconda/)
+The FlyGrAM was developed and tested in the Windows OS environment. In theory, the software should be platform agnostic but has not been tested or and is not guaranteed to work with Mac or \*nix systems.
+
+1. Python 2.7 64-bit (Anaconda distribution is highly highly recommended: https://store.continuum.io/cshop/anaconda/)
 
 2. OpenCV with python bindings RC 3.0+ (http://opencv.org/downloads.html)
 
 3. FFMPEG 64-bit Zeranoe build (http://ffmpeg.zeranoe.com/builds/, see also: http://www.wikihow.com/Install-FFmpeg-on-Windows)
-
-4. Needs a camera calibration file (see the Cam_calibration.py file for details)
 
 Setup particulars:
 ------------------
@@ -39,7 +39,12 @@ Setup particulars:
 1. Flies need to be IR backlit and cameras must have an IR filter fitted for tracking
 and all components of the experimental setup to work properly.
 
-2. Arduino's need to be loaded with the 'Opto-blink' sketch
+2. Arduino's need to be loaded with the 'Opto-blink and Solenoids' sketch
+
+Detailed install instructions (only Windows OS for now...):
+-----------------------------------------------------------
+
+[Click Here!](https://github.com/njmei/fly-group-activity-monitor/wiki/flyGrAM-Detailed-Installation-Guide-for-Windows-OS)
 
 Required Computer hardware:
 ---------------------------
