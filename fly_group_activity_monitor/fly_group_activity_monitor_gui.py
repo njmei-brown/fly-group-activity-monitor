@@ -88,7 +88,7 @@ def preview_camera(calibration_data = None):
                 cv2.imshow('Calibrated camera preview: press "Esc" to close',unwarped) 
             else:
                 cv2.imshow('Camera preview: press "Esc" to close', frame)
-            key = cv2.waitKey(30) & 0xff
+            key = cv2.waitKey(1) & 0xff
             if key == 27:
                 break
         else:
@@ -132,7 +132,7 @@ def calibrate_camera(perform_save, num_samples = 200):
             # Draw and display the corners
             cv2.drawChessboardCorners(img, (6,6), refined_corners, found_corners)
             cv2.imshow('Chessboard Corners Found!',img)
-            k = cv2.waitKey(30) & 0xff         
+            k = cv2.waitKey(1) & 0xff         
             print("{} number of calibration points collected so far!".format(len(imgpoints)))
             if len(imgpoints) > num_samples or k==27:
                 break            

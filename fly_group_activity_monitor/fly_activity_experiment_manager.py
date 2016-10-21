@@ -517,7 +517,7 @@ class experiment(object):
                 #Show video with active flies highlighted
                 for indx, proc_frame in enumerate(roi_frames):                
                     cv2.imshow('{}'.format(roi_list[indx]), proc_frame) 
-                cv2.waitKey(5)
+                cv2.waitKey(1)
                 
                 def counted(f):
                     def wrapped(*args, **kwargs):
