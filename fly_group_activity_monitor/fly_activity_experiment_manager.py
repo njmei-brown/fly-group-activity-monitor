@@ -33,17 +33,22 @@ import json
 import timeit
 import serial
 
+#import cProfile
+#profiler = cProfile.Profile()
+#if sys.platform == 'win32' or sys.platform == "darwin":
+#    desktop_path = os.path.abspath(os.path.expanduser("~/Desktop/"))
+
 import serial.tools.list_ports as lp
 import numpy as np
 import matplotlib.pyplot as plt
 import multiprocessing as mp
 import subprocess as sp
 
+from functools import wraps
 from itertools import chain
 from collections import deque
 
 import cv2
-
 import roi
 
 #Note to self: Using interactive interpreter elements works horribly with multiprocessing...
@@ -55,6 +60,7 @@ import roi
 #Location of your ffmpeg.exe file in order to write video out
 FFMPEG_BIN = u'C:/FFMPEG/bin/ffmpeg.exe'
 
+#%%
 def correct_distortion(input_frame, calib_mtx, calib_dist):
     """
     Function that applies correction for radial "fisheye" lens distortion
@@ -66,20 +72,18 @@ def correct_distortion(input_frame, calib_mtx, calib_dist):
     newcameramtx, region = cv2.getOptimalNewCameraMatrix(calib_mtx,calib_dist,(w,h),1,(w,h))
     corrected_frame = cv2.undistort(input_frame, calib_mtx, calib_dist, None, newcameramtx)         
     return corrected_frame
-    
-def find_arduino():
+
+#%%
+def find_arduinos():
     """
-    Function that scans serial ports to look for Arduino
-    Returns as a string the name of the first port with an Arduino connected
+    Function that scans serial ports to look for Arduinos
+    Returns a list containing 'COM' ports as strings
     If an arduino is not found, return "None"
     """    
     ports = list(lp.comports())
-    
-    for p in ports:
-        if "Arduino" in p[1]:
-            return p[0]
-    return None
+    return [port[0] for port in ports if "Arduino" in port[1]]
 
+#%%
 def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, led_dur, 
                  stim_on_time, stim_dur, calib_mtx, calib_dist,
                  write_video, frame_height, frame_width, fps_cap,
@@ -116,13 +120,15 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
         return time.clock()-start_time  
     
     if use_arduino:
-        arduino_port = find_arduino()
-        if not arduino_port:
+        arduino_ports = find_arduinos()
+        if arduino_ports:
+            port = arduino_ports[0]
+        else:
             raise ValueError('Could not find an Arduino to connect to! Please check that an Arduino is connected!')
         #Initialize the arduino!
         #Doing it this way prevents the serial reset that occurs!
         arduino = serial.Serial()
-        arduino.port = arduino_port
+        arduino.port = port
         arduino.baudrate = 250000
         arduino.timeout = 0.05
         arduino.setDTR(False)
@@ -131,22 +137,21 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
         #When serial connection is made, arduino opto-blink script sends an initial
         #"OFF" signal. We'll just read the line and empty the serial buffer
         arduino.readline()
-        arduino.is_on = False
-    
-        #communicate with arduino with: arduino.write('x,y') 
+        arduino.is_on = False    
+        #communicate with arduino with: arduino.write('[x,y]') 
         #where 'x' is desired frequency in Hz and 'y' is desired LED on time in ms
         #immediately write 0 hz and 0 on_time to prevent flashing
-        arduino.write('0,0')     
+        arduino.write('[0,0]')     
 
         def turn_on_stim(led_freq, led_dur):
-            arduino.write('{freq},{dur}'.format(freq=led_freq, dur=led_dur))
+            arduino.write('[{freq},{dur}]'.format(freq=led_freq, dur=led_dur))
             arduino_state = arduino.readline()
             state = np.fromstring(arduino_state, dtype=float, sep=',')
             if state[0] != 0.00 and state[1] != 0.00:
                 arduino.is_on = True
-        
+                
         def turn_off_stim():
-            arduino.write('0,0')
+            arduino.write('[0,0]')
             arduino_state = arduino.readline()
             state = np.fromstring(arduino_state, dtype=float, sep=',')
             if state[0] == 0.00 and state[1] == 0.00:
@@ -155,8 +160,7 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
     #Wait for the start signal from the parent process to begin grabbing frames
     while True:
         #This will block until it receives the message it was waiting for
-        msg = child_conn_obj.recv()
-        
+        msg = child_conn_obj.recv()        
         #The parent process will send a timestamp right before sending the 
         #'Start' signal. This allows all file names to be synchronized to when
         #the expt.start_expt() command is called.
@@ -164,8 +168,7 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
             timestring = msg.split(":")[-1]            
             if write_video: 
                 base_fname = '{}'.format(os.path.abspath(os.path.join(default_save_dir,timestring)))
-                fname = "video--" + timestring
-                    
+                fname = "video--" + timestring                    
                 ffmpeg_command = [ FFMPEG_BIN,
                                   '-f', 'rawvideo',
                                   '-pix_fmt', 'bgr24',
@@ -180,17 +183,14 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
                                   base_fname + "/{}.avi".format(fname)]
                                            
                 #Note to self, don't try to redirect stout or sterr to sp.PIPE as filling the pipe up will cause subprocess to hang really bad :(
-                video_writer = sp.Popen(ffmpeg_command, stdin=sp.PIPE)  
-                
+                video_writer = sp.Popen(ffmpeg_command, stdin=sp.PIPE)                  
         if msg == 'Start!':
-            break 
-        
+            break         
     cam = cv2.VideoCapture(0)
     #We don't want the camera to try to autogain as it messes up the image
     #So start acquiring some frames to avoid the autogain frames
     for x in range(30):
-        ret, temp = cam.read()    
-    
+        ret, temp = cam.read()       
     #start the clock!!
     expt_start_time = time.clock() 
     fps_cap_timer = time.clock()
@@ -213,8 +213,7 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
             if calib_mtx.any():
                 frame = correct_distortion(raw_frame, calib_mtx, calib_dist)
             else:
-                frame = raw_frame
-            
+                frame = raw_frame            
             if write_video:
                 video_writer.stdin.write(frame.tostring())
             
@@ -249,6 +248,17 @@ def control_expt(child_conn_obj, data_q_obj, use_arduino, expt_dur, led_freq, le
         video_writer.wait()
     cam.release()
 
+#%%
+def counted(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        wrapper.calls += 1
+        return func(*args, **kwargs)
+    wrapper.calls = 0
+    wrapper.__name__= func.__name__
+    return wrapper
+
+#%%
 class experiment(object):
     def __init__(self, expt_conn_obj=None, write_video=False, write_csv=False,
                  use_arduino=False, expt_dur = 60, led_freq = 5, led_dur=5, 
@@ -295,16 +305,16 @@ class experiment(object):
             #Need to figure out what the effective fps of the camera is...
             #We'll use the python timeit module to achieve this
             fps_timer = timeit.Timer('[webcam.read() for x in range(30)]', 
-                                     'import cv2\nwebcam=cv2.VideoCapture(cv2.CAP_DSHOW + 0)\n')        
+                                     'import cv2\nwebcam=cv2.VideoCapture(0)\n')        
             #time how long it takes to read 30 frames 10 times in a row
             self.fps = (5*30)/fps_timer.timeit(5)        
         else:
             self.fps = fps_cap        
         #start webcam video capture instance. Use directshow instead of VFW
-        sample_cam  = cv2.VideoCapture(cv2.CAP_DSHOW + 0)
+        sample_cam  = cv2.VideoCapture(0)
         #We don't want the camera to try to autogain as it messes up the image
-        sample_cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.0)
-        sample_cam.set(cv2.CAP_PROP_GAIN, 0.0)        
+        sample_cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0)
+        sample_cam.set(cv2.CAP_PROP_GAIN, 0)        
         #grab frames of video from the webcam
         sample_frames = []
         for x in range(60):
@@ -359,6 +369,7 @@ class experiment(object):
             
             print("Finished setting all ROIs!")     
             sys.stdout.flush()
+        #finished initialization!
           
     def read_cam_calibration_file(self, filepath):
         """
@@ -400,7 +411,74 @@ class experiment(object):
         
     def shutdown_expt_manager(self):
         self.parent_conn.send('Shutdown!')
-    
+        
+    def init_activity_plots(self):
+        #initialize matplotlib plots for raw group activity
+        fig, axes = plt.subplots(2,2, sharex='col', sharey='row')    
+        fig.patch.set_facecolor('white')                 
+        fig.suptitle('{} Hz {} Pulse width - {}'.format(self.led_freq, self.led_dur, self.expt_timestring), weight='bold')       
+        for indx, ax in enumerate(chain(*axes)):
+            ax.set_xlim(0,self.expt_dur)
+            ax.set_ylim(-0.5,20)          
+            ax.tick_params(top="off",right="off")
+            ax.spines['right'].set_visible(False)
+            ax.spines['top'].set_visible(False)   
+            ax.axvspan(self.stim_on_time, self.stim_on_time+self.stim_dur, facecolor='r', alpha=0.25, edgecolor = 'none')        
+            ax.tick_params(axis='x', pad=5)     
+            ax.tick_params(axis='y', pad=5)            
+            #make only every other axis label visible
+            for label in ax.xaxis.get_ticklabels()[::2]:
+                label.set_visible(False)           
+            ax.hold(True)            
+        fig.text(0.5, 0.04, 'Time elapsed (sec)', ha='center', va='center', weight='bold')
+        fig.text(0.06, 0.5, 'Number of active flies', ha='center', va='center', rotation='vertical', weight='bold')
+        fig.show()    
+        return fig, axes
+        
+    #update plots
+    @counted
+    def update_plots(self, axes, lines, backgrounds):
+        key_list = sorted([k for k in self.results_dict.keys() if 'roi' in k])
+        # Because the matplotlib subplots are in the following order:
+        # 1, 2
+        # 3, 4
+        # and because our ROIs are set in the following order physically:
+        # 1, 3
+        # 2, 4
+        # We need to permute the dictionary key_list so that the correct order is being plotted
+        pkey_list = [key_list[i] for i in [0,2,1,3]]                                     
+        #restore backgrounds
+        for indx, ax in enumerate(chain(*axes)):
+            ax.figure.canvas.restore_region(backgrounds[indx]) 
+        #update data
+        for indx, key in enumerate(pkey_list):
+            lines[indx].set_data(zip(*self.plotting_dict[key]))
+        #draw just the lines
+        for indx, ax in enumerate(chain(*axes)):
+            ax.draw_artist(lines[indx]) 
+        #Use blit to only draw differences
+        for ax in chain(*axes):
+            ax.figure.canvas.blit(ax.bbox) 
+                  
+    def show_tracking(self, roi_frames):
+        #Image shapes are in the order of h,w,d
+        hw = np.array([(proc_frame.shape[0], proc_frame.shape[1]) for proc_frame in roi_frames])
+        max_height, max_width = hw.reshape([4,2]).max(axis=0)                        
+        stitched = np.zeros((max_height*2, max_width*2, 3), np.uint8)               
+        x = 0
+        y = 0
+        #stich together individual arena roi tracked videos
+        for indx,proc_frame in enumerate(roi_frames):    
+            h,w,d = proc_frame.shape
+            stitched[y:y+h,x:x+w,:d] = proc_frame   
+            if indx % 2 == 0:
+                y += max_height
+            else:
+                y -= max_height
+                x += max_width               
+        cv2.imshow('Annotated', stitched) 
+        cv2.waitKey(1)
+
     def start_expt(self):  
         if self.use_arduino:
             self.expt_timestring = time.strftime("%Y-%m-%d") + " " + time.strftime("%H.%M.%S") + " " + '- {} Hz {} Pulse width'.format(self.led_freq, self.led_dur)
@@ -412,7 +490,7 @@ class experiment(object):
             os.makedirs(self.save_dir)  
             
         self.parent_conn.send('Time:{}'.format(self.expt_timestring))
-        time.sleep(0.5)
+        time.sleep(0.25)
         self.parent_conn.send('Start!')
         #give a bit of time for the child process to get started
         time.sleep(0.25)
@@ -432,33 +510,16 @@ class experiment(object):
             self.results_dict[roi_name] = list()
             self.plotting_dict[roi_name] = deque(maxlen=100)
             
-        #initialize matplotlib plots 
-        fig, axes = plt.subplots(2,2, sharex='col', sharey='row')                     
-        fig.suptitle('{} Hz {} Pulse width - {}'.format(self.led_freq, self.led_dur, self.expt_timestring), weight='bold')       
-        for indx, ax in enumerate(chain(*axes)):
-            ax.set_xlim(0,self.expt_dur)
-            ax.set_ylim(-0.5,20)          
-            ax.tick_params(top="off",right="off")
-            ax.spines['right'].set_visible(False)
-            ax.spines['top'].set_visible(False)   
-            ax.axvspan(self.stim_on_time, self.stim_on_time+self.stim_dur, facecolor='r', alpha=0.25, edgecolor = 'none')        
-            ax.tick_params(axis='x', pad=5)     
-            ax.tick_params(axis='y', pad=5)            
-            #make only every other axis label visible
-            for label in ax.xaxis.get_ticklabels()[::2]:
-                label.set_visible(False)           
-            ax.hold(True)            
-        fig.text(0.5, 0.04, 'Time elapsed (sec)', ha='center', va='center', weight='bold')
-        fig.text(0.06, 0.5, 'Number of active flies', ha='center', va='center', rotation='vertical', weight='bold')
-        plt.show(False)        
-        plt.draw()
+        #initialize matplotlib plots for raw group activity
+        act_fig, act_axes = self.init_activity_plots()      
         #do an initial subplot background save
-        backgs = [ax.figure.canvas.copy_from_bbox(ax.bbox) for ax in chain(*axes)]
-        lns = [ax.plot([],[])[0] for ax in chain(*axes)]  
-        
+        backgs = [ax.figure.canvas.copy_from_bbox(ax.bbox) for ax in chain(*act_axes)]
+        lns = [ax.plot([],[])[0] for ax in chain(*act_axes)]        
+               
         msg = None
         
         #Python "dot" loop optimization:
+        #see: https://wiki.python.org/moin/PythonSpeed/PerformanceTips
         if hasattr(self, 'expt_conn_obj'):
             expt_conn_obj_poll = self.expt_conn_obj.poll
             expt_conn_obj_recv = self.expt_conn_obj.recv
@@ -469,7 +530,11 @@ class experiment(object):
         get_activity_counts = self.get_activity_counts
         bg_sub_dict = self.bg_sub_dict
         roi_dict  = self.roi_dict
-        roi_list = self.roi_list        
+        roi_list = self.roi_list    
+        show_tracking = self.show_tracking
+        update_plots = self.update_plots
+        
+        #profiler.enable()
        
         while True:           
             if hasattr(self, 'expt_conn_obj'):
@@ -481,18 +546,19 @@ class experiment(object):
             time_stamp, frame, stim_bool = data_q_get()   
             
             #check if the experiment data collection has completed
-            if frame == 'stop':
-                #let's close everything down
-                cv2.destroyAllWindows()
-                #clean up the expt control process
-                self.data_q.close()
-                self.data_q.join_thread()
-                self.child_conn.close()
-                self.parent_conn.close()
-                self.control_expt_process.terminate()
-                break
+            if type(frame) == str:
+                if frame == 'stop':
+                    #let's close everything down
+                    cv2.destroyAllWindows()
+                    #clean up the expt control process
+                    self.data_q.close()
+                    self.data_q.join_thread()
+                    self.child_conn.close()
+                    self.parent_conn.close()
+                    self.control_expt_process.terminate()
+                    break
             
-            elif type(frame) is np_ndarray:                
+            elif type(frame) == np_ndarray:                
                 #print frame.dtype, frame.size
                 #print (time_stamp, stim_bool)            
                 fps = 1/(time_stamp-prev_time_stamp)
@@ -504,8 +570,7 @@ class experiment(object):
                     self.max_q_size = data_q_qsize()
         
                 #order of result sublists should be ['line1', 'line2', 'roi1', 'roi2', 'roi3', 'roi4']   
-                results = [get_activity_counts(roi_name, bg_sub_dict[roi_name], frame, roi_dict[roi_name]) for roi_name in roi_list]                
-                   
+                results = [get_activity_counts(roi_name, bg_sub_dict[roi_name], frame, roi_dict[roi_name]) for roi_name in roi_list]           
                 roi_counts, roi_frames = zip(*results)     
                                
                 for roi_indx, roi_name in enumerate(roi_list):
@@ -514,49 +579,22 @@ class experiment(object):
                     #append roi_counts to the plotting deque
                     self.plotting_dict[roi_name].append([time_stamp, roi_counts[roi_indx]])
                 
-                #Show video with active flies highlighted
-                for indx, proc_frame in enumerate(roi_frames):                
-                    cv2.imshow('{}'.format(roi_list[indx]), proc_frame) 
-                cv2.waitKey(1)
-                
-                def counted(f):
-                    def wrapped(*args, **kwargs):
-                        wrapped.calls += 1
-                        return f(*args, **kwargs)
-                    wrapped.calls = 0
-                    return wrapped
-                
-                #update plots
-                @counted
-                def update_plots(lines, backgrounds):
-                    key_list = sorted([k for k in self.results_dict.keys() if 'roi' in k])
-                    # Because the matplotlib subplots are in the following order:
-                    # 1, 2
-                    # 3, 4
-                    # and because our ROIs are set in the following order physically:
-                    # 1, 3
-                    # 2, 4
-                    # We need to permute the dictionary key_list so that the correct order is being plotted
-                    pkey_list = [key_list[i] for i in [0,2,1,3]]                                     
-                    #restore backgrounds
-                    for indx, ax in enumerate(chain(*axes)):
-                        ax.figure.canvas.restore_region(backgrounds[indx]) 
-                    #update data
-                    for indx, key in enumerate(pkey_list):
-                        lines[indx].set_data(zip(*self.plotting_dict[key]))
-                    #draw just the lines
-                    for indx, ax in enumerate(chain(*axes)):
-                        ax.draw_artist(lines[indx]) 
-                    #Use blit to only draw differences
-                    for ax in chain(*axes):
-                        ax.figure.canvas.blit(ax.bbox) 
-                        
+                #only display every 3rd tracked frame
+                #Results in massive speedup
+                if update_plots.calls % 3 == 0:
+                    show_tracking(roi_frames)
+                                       
                 #resave the backgrounds with drawn data but only if update_plots has been called near the plotting_dict deque length
                 if update_plots.calls % 99 == 0:
-                    backgs = [ax.figure.canvas.copy_from_bbox(ax.bbox) for ax in chain(*axes)]
-              
-                update_plots(lns, backgs)
+                    backgs = [ax.figure.canvas.copy_from_bbox(ax.bbox) for ax in chain(*act_axes)]           
+                update_plots(act_axes, lns, backgs)
                 
+        #profiler.disable()
+        #profiler.dump_stats(os.path.join(desktop_path,"Stats.dmp"))
+        
+        #update plots one more time after experiment loop has finished so user can see overall activity results
+        update_plots(act_axes,lns,backgs)
+     
         #Okay we've finished analyzing all them data. Time to save it out.   
         if self.write_csv:
             import csv
@@ -596,13 +634,16 @@ if __name__ == '__main__':
 
     # example call where the following occurs:
     # experimental setup, 5 second delay, and then subsequent start of expt
+    
+    if sys.platform == 'win32' or sys.platform == "darwin":
+        desktop_path = os.path.abspath(os.path.expanduser("~/Desktop/"))
+    
     expt = experiment(write_video=True, use_arduino=True, expt_dur = 60,
                       led_freq = 5, led_dur=5, stim_on_time= 30, 
                       stim_dur = 15, fps_cap=30, roi_list = None, roi_dict = None,
-                      default_save_dir = u'C:/Users/Nicholas/Desktop/')
+                      default_save_dir = desktop_path)
                                             
     print("Setup complete! Ready to start the experiment!")
     sys.stdout.flush()
     #time.sleep(5)
     #expt.start_expt()
-    pass

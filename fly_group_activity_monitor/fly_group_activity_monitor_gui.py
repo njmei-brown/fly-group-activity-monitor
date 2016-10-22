@@ -120,7 +120,7 @@ def calibrate_camera(perform_save, num_samples = 200):
     while True:
         _, img = cam.read()        
         cv2.imshow('image', img)
-        cv2.waitKey(500)                    
+        cv2.waitKey(1)                    
         gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)    
         # Find the chess board internal corners
         found_corners, corners = cv2.findChessboardCorners(gray, (6,6), cv2.CALIB_CB_FAST_CHECK)    
@@ -132,7 +132,7 @@ def calibrate_camera(perform_save, num_samples = 200):
             # Draw and display the corners
             cv2.drawChessboardCorners(img, (6,6), refined_corners, found_corners)
             cv2.imshow('Chessboard Corners Found!',img)
-            k = cv2.waitKey(1) & 0xff         
+            k = cv2.waitKey(30) & 0xff         
             print("{} number of calibration points collected so far!".format(len(imgpoints)))
             if len(imgpoints) > num_samples or k==27:
                 break            
@@ -225,13 +225,13 @@ class Application(tk.Frame):
         self.write_csv = tk.IntVar()
         self.fps_cap = tk.StringVar()
     
-        self.expt_dur.set("360")
-        self.stim_on_time.set("120")
-        self.stim_dur.set("120")
+        self.expt_dur.set("1200")
+        self.stim_on_time.set("300")
+        self.stim_dur.set("600")
         
-        self.use_arduino.set("1")
-        self.led_freq.set("0.5")
-        self.led_dur.set("1000")
+        self.use_arduino.set("0")
+        self.led_freq.set("10")
+        self.led_dur.set("10")
         
         self.write_vid.set("1")
         self.write_csv.set("1")
